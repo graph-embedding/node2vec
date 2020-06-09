@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from setuptools import setup, find_packages
+from node2vec import __version__
 
 
 with open('README.md') as readme_file:
@@ -8,7 +9,7 @@ with open('README.md') as readme_file:
 
 setup(
     name='node2vec',
-    version='0.1.0',
+    version=__version__,
     description='Highly Scalable Distributed Node2Vec Algorithm Library',
     long_description=LONG_DESCRIPTION,
     url="http://github.com/fugue-project/node2vec",
