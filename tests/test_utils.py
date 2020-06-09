@@ -7,9 +7,10 @@ from typing import Tuple
 @pytest.mark.parametrize(
     "neighbors,result",
     [
-        ([(), ()], ()),
-        ([(), ()], ()),
-        ([(), ()], ()),
+        ([(1, 0.5), (3, 1.0)], ([1, 0], [0.6666666666666666, 1.0])),
+        ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
+        ([(1, 0.2)], ([0], [1.0])),
+        ([(0, 1.0)], ([0], [1.0])),
     ],
 )
 def test_generate_alias_tables(
@@ -23,15 +24,16 @@ def test_generate_alias_tables(
 
     alias, probs = generate_alias_tables(neighbors)
     assert alias == result[0]
-    assert probs == result[1]
+    np.testing.assert_almost_equal(probs, result[1], decimal=7)
 
 
 @pytest.mark.parametrize(
     "src_id,src_nbs,dst_nbs,param_p,param_q,result",
     [
-        (1, [], [], 1.0, 1.0, ()),
-        (2, [], [], 0.8, 1.5, ()),
-        (3, [], [], 2.0, 4.0, ()),
+        (0, [(1, 0.5), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
+         ([0, 0], [1.0, 0.5714285714285715])),
+        (1, [[(0, 0.5), (2, 0.2)]], [(1, 0.2)], 0.8, 1.5, ([0], [1.0])),
+        (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 1], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
@@ -51,7 +53,7 @@ def test_generate_edge_alias_tables(
         src_id, src_nbs, dst_nbs, param_p, param_q,
     )
     assert alias == result[0]
-    assert probs == result[1]
+    np.testing.assert_almost_equal(probs, result[1], decimal=7)
 
 
 @pytest.mark.parametrize(
@@ -123,4 +125,4 @@ def test_next_step_random_walk(
     ans = next_step_random_walk(
         path, seed, dst_nbs, alias, probs,
     )
-    np.testing.assert_equal(ans, result)
+    assert ans == result

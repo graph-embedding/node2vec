@@ -10,6 +10,42 @@ def generate_alias_tables(
         node_weights: List[Tuple[int, float]],
 ) -> Tuple[List[int], List[float]]:
     """
+    Generate the two utility table for the Alias Method, following the original
+    node2vec code.
+
+    :param node_weights: a list of neighboring nodes and their weights
+
+    return the two utility tables as lists
+        probs: the probability table holding the relative probability of each neighbor
+        alias: the alias table holding the alias index to be sampled from
+    """
+    n = len(node_weights)
+    avg_weight = sum([x for _, x in node_weights]) / n
+    probs = [float(weight) / avg_weight for _, weight in node_weights]
+    alias = [0 for _ in range(n)]
+    underfull = []
+    overfull = []
+    for i in range(n):
+        if probs[i] < 1.0:
+            underfull.append(i)
+        else:
+            overfull.append(i)
+
+    while underfull and overfull:
+        under, over = underfull.pop(), overfull.pop()
+        alias[under] = over
+        probs[over] = probs[over] + probs[under] - 1.0
+        if probs[over] < 1.0:
+            underfull.append(over)
+        else:
+            overfull.append(over)
+    return alias, probs
+
+
+def generate_alias_tables_wiki(
+        node_weights: List[Tuple[int, float]],
+) -> Tuple[List[int], List[float]]:
+    """
     Generate the two utility table for the Alias Method, an efficient algorithm for
     sampling from a non-uniform discrete probability distribution. Refer to the wiki
     page https://en.wikipedia.org/wiki/Alias_method for detailed algorithm.
@@ -38,9 +74,12 @@ def generate_alias_tables(
         under, over = underfull.pop(), overfull.pop()
         alias[under] = over
         probs[over] = probs[over] + probs[under] - 1.0
-        if probs[over] > 1.0:
+        if abs(probs[over] - 1.0) <= 1e-7:      # if probs[over] ~ 1.0
+            if alias[over] < 0:
+                alias[over] = over
+        elif probs[over] > 1.0:
             overfull.append(over)
-        elif probs[over] < 1.0:
+        else:
             underfull.append(over)
     return alias, probs
 
