@@ -25,7 +25,7 @@ if __name__ == "__main__":
         spark=spark,
         input_graph=df,
         indexed=True,
-        directed=True,
+        directed=False,
         num_walks=2,
         walk_length=5,
         return_param=0.8,

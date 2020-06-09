@@ -1,7 +1,10 @@
 import pytest
 import numpy as np
+import random
 from typing import List
 from typing import Tuple
+
+random.seed(20)
 
 
 @pytest.mark.parametrize(
@@ -56,7 +59,7 @@ def test_generate_alias_tables(
         (0, [(1, 0.5), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
          ([0, 0], [1.0, 0.5714285714285715])),
         (1, [[(0, 0.5), (2, 0.2)]], [(1, 0.2)], 0.8, 1.5, ([0], [1.0])),
-        (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 1], [0.4, 1.0])),
+        (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 0], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
