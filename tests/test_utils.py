@@ -125,17 +125,17 @@ def test_sampling_from_alias(
 
 
 @pytest.mark.parametrize(
-    "path,seed,dst_nbs,alias,probs,result",
+    "path,dst_nbs,randv,alias,probs,result",
     [
-        ([], 100.0, [], [], [], []),
-        ([], 200.0, [], [], [], []),
-        ([], 300.0, [], [], [], []),
+        ([-1, 0], [1, 3], 0.14, [1, 0], [0.6666666666666666, 1.0], [0, 1]),
+        ([2, 1], [0, 2], 0.51, [0, 0], [1.0, 0.5714285714285715], [2, 1, 2]),
+        ([0, 3], [0], 0.88, [0], [1.0], [0, 3, 0]),
     ],
 )
 def test_next_step_random_walk(
         path: List[int],
-        seed: float,
         dst_nbs: List[int],
+        randv: float,
         alias: List[int],
         probs: List[float],
         result: List[int],
@@ -145,7 +145,5 @@ def test_next_step_random_walk(
     """
     from node2vec.utils import next_step_random_walk
 
-    ans = next_step_random_walk(
-        path, seed, dst_nbs, alias, probs,
-    )
+    ans = next_step_random_walk(path, randv, dst_nbs, alias, probs)
     assert ans == result
