@@ -7,7 +7,7 @@ from typing import Callable
 
 
 def generate_alias_tables(
-        node_weights: List[Tuple[int, float]],
+    node_weights: List[Tuple[int, float]],
 ) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, following the original
@@ -20,7 +20,7 @@ def generate_alias_tables(
         alias: the alias table holding the alias index to be sampled from
     """
     n = len(node_weights)
-    avg_weight = sum([x for _, x in node_weights]) / n
+    avg_weight = sum(x for _, x in node_weights) / n
     probs = [float(weight) / avg_weight for _, weight in node_weights]
     alias = [0 for _ in range(n)]
     underfull = []
@@ -43,7 +43,7 @@ def generate_alias_tables(
 
 
 def generate_alias_tables_wiki(
-        node_weights: List[Tuple[int, float]],
+    node_weights: List[Tuple[int, float]],
 ) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, an efficient algorithm for
@@ -57,13 +57,13 @@ def generate_alias_tables_wiki(
         alias: the alias table holding the alias index to be sampled from
     """
     n = len(node_weights)
-    avg_weight = sum([x for _, x in node_weights]) / n
+    avg_weight = sum(x for _, x in node_weights) / n
     probs = [float(weight) / avg_weight for _, weight in node_weights]
     alias = [-1 for _ in range(n)]
     underfull = []
     overfull = []
     for i in range(n):
-        if abs(probs[i] - 1.0) <= 1e-7:      # if probs[i] ~ 1.0
+        if abs(probs[i] - 1.0) <= 1e-7:  # if probs[i] ~ 1.0
             alias[i] = i
         elif probs[i] > 1.0:
             overfull.append(i)
@@ -74,7 +74,7 @@ def generate_alias_tables_wiki(
         under, over = underfull.pop(), overfull.pop()
         alias[under] = over
         probs[over] = probs[over] + probs[under] - 1.0
-        if abs(probs[over] - 1.0) <= 1e-7:      # if probs[over] ~ 1.0
+        if abs(probs[over] - 1.0) <= 1e-7:  # if probs[over] ~ 1.0
             if alias[over] < 0:
                 alias[over] = over
         elif probs[over] > 1.0:
@@ -85,11 +85,11 @@ def generate_alias_tables_wiki(
 
 
 def generate_edge_alias_tables(
-        src_id: int,
-        src_neighbors: List[Tuple[int, float]],
-        dst_neighbors: List[Tuple[int, float]],
-        return_param: float = 1.0,
-        inout_param: float = 1.0,
+    src_id: int,
+    src_neighbors: List[Tuple[int, float]],
+    dst_neighbors: List[Tuple[int, float]],
+    return_param: float = 1.0,
+    inout_param: float = 1.0,
 ) -> Tuple[List[int], List[float]]:
     """
     Apply the biased sampling on edge weight described in the node2vec paper. Each entry
@@ -124,10 +124,7 @@ def generate_edge_alias_tables(
     return generate_alias_tables(neighbors_dst)
 
 
-def sampling_from_alias_original(
-        alias: List[int],
-        probs: List[float],
-) -> int:
+def sampling_from_alias_original(alias: List[int], probs: List[float],) -> int:
     """
     Draw sample from a non-uniform discrete distribution using alias sampling.
 
@@ -145,11 +142,7 @@ def sampling_from_alias_original(
         return alias[pick]
 
 
-def sampling_from_alias(
-        randval: float,
-        alias: List[int],
-        probs: List[float],
-) -> int:
+def sampling_from_alias(randval: float, alias: List[int], probs: List[float],) -> int:
     """
     Draw sample from a non-uniform discrete distribution using alias sampling. This
     Alias method implementation is more aligned with the wiki description.
@@ -161,7 +154,7 @@ def sampling_from_alias(
 
     return the picked index in the neighbor list as next node in the random walk path.
     """
-    if randval == 1.0:      # handle special case when random val == 1.0
+    if randval == 1.0:  # handle special case when random val == 1.0
         randval -= 1e-7
     n = len(alias)
     pick = int(n * randval)
@@ -173,11 +166,11 @@ def sampling_from_alias(
 
 
 def next_step_random_walk(
-        path: List[int],
-        randval: float,
-        dst_neighbors: List[int],
-        alias: List[int],
-        probs: List[float],
+    path: List[int],
+    randval: float,
+    dst_neighbors: List[int],
+    alias: List[int],
+    probs: List[float],
 ) -> List[int]:
     """
     Extend the random walk path by making a biased random sampling at next step
@@ -212,10 +205,10 @@ def aggregate_vertex_neighbors(partition: List[Row]) -> List[Row]:
     src_neighbors: Dict[int, List[Tuple[int, float]]] = {}
     for arow in partition:
         row = arow.asDict()
-        src = row['src']
+        src = row["src"]
         if src not in src_neighbors:
             src_neighbors[src] = []
-        src_neighbors[src].append((row['dst'], row['weight']))
+        src_neighbors[src].append((row["dst"], row["weight"]))
 
     result: List[Row] = []
     for src, neighbors in src_neighbors.items():
@@ -247,21 +240,21 @@ def calculate_vertex_attributes(num_walks: int) -> Callable:
         id_name: Dict[int, str] = {}
         for arow in partition:
             row = arow.asDict()
-            src = row['src']
+            src = row["src"]
             if src not in src_neighbors:
                 src_neighbors[src] = []
-            src_neighbors[src].append((row['dst'], row['weight']))
-            if 'name' in row:
-                id_name[src] = row['name']
+            src_neighbors[src].append((row["dst"], row["weight"]))
+            if "name" in row:
+                id_name[src] = row["name"]
 
         result: List[Row] = []
         for src, neighbors in src_neighbors.items():
             neighbors.sort(key=lambda x: x[0])
-            dic = {'id': src, 'neighbors': neighbors}
+            dic = {"id": src, "neighbors": neighbors}
             if src in id_name:
-                dic.update({'name': id_name[src]})
+                dic.update({"name": id_name[src]})
             for i in range(1, num_walks + 1):
-                dic.update({'path': [-i, src]})
+                dic.update({"path": [-i, src]})
                 result += [Row(**dic)]
         return result
 
@@ -269,9 +262,7 @@ def calculate_vertex_attributes(num_walks: int) -> Callable:
 
 
 def calculate_edge_attributes(
-        return_param: float,
-        inout_param: float,
-        num_walks: int,
+    return_param: float, inout_param: float, num_walks: int,
 ) -> Callable:
     """
     A func for running mapPartitions to initiate attributes for every edge in the graph
@@ -297,25 +288,31 @@ def calculate_edge_attributes(
         src_to_neighbors: Dict[int, List[Tuple[int, float]]] = {}
         for arow in partition:
             row = arow.asDict()
-            src, dst_neighbors = row['src'], row['dst_neighbors']
+            src, dst_neighbors = row["src"], row["dst_neighbors"]
             src_to_neighbors[src] = row["src_neighbors"]
             alias, probs = generate_edge_alias_tables(
                 src, row["src_neighbors"], dst_neighbors, return_param, inout_param
             )
-            result += [Row(edge=str(src) + " " + str(row["dst"]),
-                           dst_neighbors=[v[0] for v in dst_neighbors],
-                           alias=alias,
-                           probs=probs,
-                           )]
+            result += [
+                Row(
+                    edge=str(src) + " " + str(row["dst"]),
+                    dst_neighbors=[v[0] for v in dst_neighbors],
+                    alias=alias,
+                    probs=probs,
+                )
+            ]
 
         for src, neighbors in src_to_neighbors.items():
             alias, probs = generate_alias_tables(neighbors)
             for i in range(1, num_walks + 1):
-                result += [Row(edge=str(-i) + " " + str(src),
-                               dst_neighbors=[v[0] for v in neighbors],
-                               alias=alias,
-                               probs=probs,
-                               )]
+                result += [
+                    Row(
+                        edge=str(-i) + " " + str(src),
+                        dst_neighbors=[v[0] for v in neighbors],
+                        alias=alias,
+                        probs=probs,
+                    )
+                ]
         return result
 
     return _get_edge_attr_each_partition
