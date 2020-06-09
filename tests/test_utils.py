@@ -28,6 +28,29 @@ def test_generate_alias_tables(
 
 
 @pytest.mark.parametrize(
+    "neighbors,result",
+    [
+        ([(1, 0.5), (3, 1.0)], ([1, 1], [0.6666666666666666, 1.0])),
+        ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
+        ([(1, 0.2)], ([0], [1.0])),
+        ([(0, 1.0)], ([0], [1.0])),
+    ],
+)
+def test_generate_alias_tables(
+        neighbors: List[Tuple[int, float]],
+        result: Tuple[List[int], List[float]],
+) -> None:
+    """
+
+    """
+    from node2vec.utils import generate_alias_tables_wiki
+
+    alias, probs = generate_alias_tables_wiki(neighbors)
+    assert alias == result[0]
+    np.testing.assert_almost_equal(probs, result[1], decimal=7)
+
+
+@pytest.mark.parametrize(
     "src_id,src_nbs,dst_nbs,param_p,param_q,result",
     [
         (0, [(1, 0.5), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
@@ -59,9 +82,9 @@ def test_generate_edge_alias_tables(
 @pytest.mark.parametrize(
     "alias,probs,result",
     [
-        ([], [], 0),
-        ([], [], 0),
-        ([], [], 0),
+        ([1, 0], [0.6666666666666666, 1.0], 1),
+        ([0, 0], [1.0, 0.5714285714285715], 0),
+        ([0], [1.0], 0),
     ],
 )
 def test_sampling_from_alias_original(
@@ -79,15 +102,15 @@ def test_sampling_from_alias_original(
 
 
 @pytest.mark.parametrize(
-    "seed,alias,probs,result",
+    "randv,alias,probs,result",
     [
-        (10.0, [], [], 0),
-        (20.0, [], [], 0),
-        (30.0, [], [], 0),
+        (0.14, [1, 0], [0.6666666666666666, 1.0], 0),
+        (0.51, [0, 0], [1.0, 0.5714285714285715], 1),
+        (0.88, [0], [1.0], 0),
     ],
 )
 def test_sampling_from_alias(
-        seed: float,
+        randv: float,
         alias: List[int],
         probs: List[float],
         result: int,
@@ -97,7 +120,7 @@ def test_sampling_from_alias(
     """
     from node2vec.utils import sampling_from_alias
 
-    ans = sampling_from_alias(seed, alias, probs)
+    ans = sampling_from_alias(randv, alias, probs)
     assert ans == result
 
 

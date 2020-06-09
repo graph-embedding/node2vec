@@ -15,7 +15,8 @@ if __name__ == "__main__":
     sc = spark.sparkContext
     graph = nx.fast_gnp_random_graph(n=1000, p=0.01)
     cols = ["src", "dst"]
-    df = (sc.parallelize(zip(*list(graph.edges)))
+    data = [list(x) for x in graph.edges]
+    df = (sc.parallelize(zip(*data))
             .map(lambda x: Row(**{cols[i]: elt for i, elt in enumerate(x)}))
             .toDF()
           )
