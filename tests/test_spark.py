@@ -1,5 +1,7 @@
 import random
+import networkx as nx
 from pyspark.sql import SparkSession
+from pyspark.sql import Row
 from pyspark.sql import functions as ssf
 from node2vec.spark import Node2VecSpark
 
@@ -9,10 +11,14 @@ if __name__ == "__main__":
     This is a preset integration test on a small graph.
     Correctness test is not in the scope of this test.
     """
-    spark = SparkSession.builder.appName("node2vec").getOrCreate()
-    bucket = "gs://sq-dataproc-graphlib-prod"
-    df = spark.read.csv(bucket + "/test_graph_10k/graph_edges.csv")
-    df = df.toDF("src", "dst")
+    spark = SparkSession.builder.appName("node2vec-test").getOrCreate()
+    sc = spark.sparkContext
+    graph = nx.fast_gnp_random_graph(n=1000, p=0.01)
+    cols = ["src", "dst"]
+    df = (sc.parallelize(zip(*list(graph.edges)))
+            .map(lambda x: Row(**{cols[i]: elt for i, elt in enumerate(x)}))
+            .toDF()
+          )
     df = df.withColumn("weight", ssf.lit(random.random()))
     g2v = Node2VecSpark(
         spark=spark,
@@ -27,4 +33,4 @@ if __name__ == "__main__":
         w2vparams=None,
     )
     df = g2v.embedding()
-    df.write.parquet(bucket + "/test_graph_10k/result", "overwrite")
+    assert df.count() > 0

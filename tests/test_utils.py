@@ -1,79 +1,126 @@
 import pytest
 import numpy as np
+from typing import List
+from typing import Tuple
 
 
-def test_map_edgelist_to_csrgraph():
-    from graphlib.node2vec.numba import map_edgelist_to_csrgraph
+@pytest.mark.parametrize(
+    "neighbors,result",
+    [
+        ([(), ()], ()),
+        ([(), ()], ()),
+        ([(), ()], ()),
+    ],
+)
+def test_generate_alias_tables(
+        neighbors: List[Tuple[int, float]],
+        result: Tuple[List[int], List[float]],
+) -> None:
+    """
 
-    edge_list = [(0, 1, 0.5), (0, 3, 1.0), (1, 2, 0.2)]
-    g, mp = map_edgelist_to_csrgraph(edge_list)
-    assert mp == {0: 0, 1: 1, 3: 2, 2: 3}
-    np.testing.assert_almost_equal(g.data, [0.5, 1.0, 0.2], decimal=5)
-    np.testing.assert_equal(g.indptr, [0, 2, 3, 3, 3])
-    np.testing.assert_equal(g.indices, [1, 2, 3])
+    """
+    from node2vec.utils import generate_alias_tables
 
-    g, mp = map_edgelist_to_csrgraph(edge_list, mapnode=False)
-    assert not mp
-    np.testing.assert_almost_equal(g.data, [0.5, 1.0, 0.2], decimal=5)
-    np.testing.assert_equal(g.indptr, [0, 2, 3, 3, 3])
-    np.testing.assert_equal(g.indices, [1, 3, 2])
-
-    edge_list = [(0, 1), (0, 4), (1, 3)]
-    g, mp = map_edgelist_to_csrgraph(edge_list)
-    assert mp == {0: 0, 1: 1, 4: 2, 3: 3}
-    np.testing.assert_almost_equal(g.data, [1.0, 1.0, 1.0], decimal=5)
-    np.testing.assert_equal(g.indptr, [0, 2, 3, 3, 3])
-    np.testing.assert_equal(g.indices, [1, 2, 3])
+    alias, probs = generate_alias_tables(neighbors)
+    assert alias == result[0]
+    assert probs == result[1]
 
 
-def test_normalize_row():
-    from graphlib.node2vec.numba import normalize_row
+@pytest.mark.parametrize(
+    "src_id,src_nbs,dst_nbs,param_p,param_q,result",
+    [
+        (1, [], [], 1.0, 1.0, ()),
+        (2, [], [], 0.8, 1.5, ()),
+        (3, [], [], 2.0, 4.0, ()),
+    ],
+)
+def test_generate_edge_alias_tables(
+        src_id: int,
+        src_nbs: List[Tuple[int, float]],
+        dst_nbs: List[Tuple[int, float]],
+        param_p: float,
+        param_q: float,
+        result: Tuple[List[int], List[float]],
+) -> None:
+    """
 
-    weight = np.array([0.5, 1.0, 0.2])
-    indptr = np.array([0, 2, 3, 3, 3])
-    res = normalize_row(weight, indptr)
-    np.testing.assert_almost_equal(res, [0.33333334, 0.6666667, 1.], decimal=5)
+    """
+    from node2vec.utils import generate_edge_alias_tables
 
-    weight = np.array([0.5, 1., 0.5, 0.2, 1., 0.2])
-    indptr = np.array([0, 2, 4, 5, 6])
-    res = normalize_row(weight, indptr)
-    np.testing.assert_almost_equal(
-        res, [0.33333334, 0.6666667, 0.71428573, 0.2857143, 1., 1.], decimal=5,
+    alias, probs = generate_edge_alias_tables(
+        src_id, src_nbs, dst_nbs, param_p, param_q,
     )
-
-    weight = np.array([0.5, 1.0, 0.2])
-    indptr = np.array([0, 2, 3, 3, 4])
-    with pytest.raises(ValueError):
-        normalize_row(weight, indptr)
+    assert alias == result[0]
+    assert probs == result[1]
 
 
-def test_unbiased_random_walk():
-    from graphlib.node2vec.numba import unbiased_random_walk
+@pytest.mark.parametrize(
+    "alias,probs,result",
+    [
+        ([], [], 0),
+        ([], [], 0),
+        ([], [], 0),
+    ],
+)
+def test_sampling_from_alias_original(
+        alias: List[int],
+        probs: List[float],
+        result: int,
+) -> None:
+    """
 
-    weight = np.array([0.33333334, 0.6666667, 0.71428573, 0.2857143, 1., 1.])
-    indptr = np.array([0, 2, 4, 5, 6])
-    colidx = np.array([1, 2, 0, 3, 0, 1])
-    sampling_nodes = np.array([0, 1, 2, 3, 0, 1, 2, 3])
-    walk_length = 3
-    paths = unbiased_random_walk(weight, indptr, colidx, sampling_nodes, walk_length)
-    assert len(paths) == len(sampling_nodes)
-    np.testing.assert_equal(
-        [len(v) for v in paths], [walk_length] * len(sampling_nodes)
+    """
+    from node2vec.utils import sampling_from_alias_original
+
+    ans = sampling_from_alias_original(alias, probs)
+    assert ans == result
+
+
+@pytest.mark.parametrize(
+    "seed,alias,probs,result",
+    [
+        (10.0, [], [], 0),
+        (20.0, [], [], 0),
+        (30.0, [], [], 0),
+    ],
+)
+def test_sampling_from_alias(
+        seed: float,
+        alias: List[int],
+        probs: List[float],
+        result: int,
+) -> None:
+    """
+
+    """
+    from node2vec.utils import sampling_from_alias
+
+    ans = sampling_from_alias(seed, alias, probs)
+    assert ans == result
+
+
+@pytest.mark.parametrize(
+    "path,seed,dst_nbs,alias,probs,result",
+    [
+        ([], 100.0, [], [], [], []),
+        ([], 200.0, [], [], [], []),
+        ([], 300.0, [], [], [], []),
+    ],
+)
+def test_next_step_random_walk(
+        path: List[int],
+        seed: float,
+        dst_nbs: List[int],
+        alias: List[int],
+        probs: List[float],
+        result: List[int],
+) -> None:
+    """
+
+    """
+    from node2vec.utils import next_step_random_walk
+
+    ans = next_step_random_walk(
+        path, seed, dst_nbs, alias, probs,
     )
-
-
-def test_biased_random_walk():
-    from graphlib.node2vec.numba import biased_random_walk
-
-    weight = np.array([0.33333334, 0.6666667, 0.71428573, 0.2857143, 1., 1.])
-    indptr = np.array([0, 2, 4, 5, 6])
-    colidx = np.array([1, 2, 0, 3, 0, 1])
-    sampling_nodes = np.array([0, 1, 2, 3, 0, 1, 2, 3])
-    walk_length = 3
-    paths = biased_random_walk(
-        weight, indptr, colidx, sampling_nodes, walk_length, 0.8, 1.5
-    )
-    assert len(paths) == len(sampling_nodes)
-    np.testing.assert_equal(
-        [len(v) for v in paths], [walk_length] * len(sampling_nodes)
-    )
+    np.testing.assert_equal(ans, result)
