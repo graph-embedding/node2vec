@@ -8,7 +8,7 @@ with open("README.md") as readme_file:
     LONG_DESCRIPTION = readme_file.read()
 
 setup(
-    name="node2vec",
+    name="node2vec-fugue",
     version=__version__,
     description="Highly Scalable Distributed Node2Vec Algorithm Library",
     long_description=LONG_DESCRIPTION,

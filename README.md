@@ -4,7 +4,7 @@ A highly scalable distributed node2vec algorithm
 
 ## Installation
 ```
-pip install fugue-node2vec
+pip install node2vec-fugue
 ```
 
 
