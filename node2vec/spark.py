@@ -1,6 +1,6 @@
 import networkx as nx
 import logging
-from time import time_ns
+import time
 from typing import Union
 from typing import List
 from typing import Any
@@ -95,7 +95,7 @@ class Node2VecSpark:
         if w2vparams is None:
             w2vparams = WORD2VEC_PARAMS
 
-        self.random_seed = time_ns() // 1000000 if random_seed is None else random_seed
+        self.random_seed = random_seed or int(round(time.time() * 1000))
         if w2vparams.get("seed", None) is None:
             w2vparams["seed"] = self.random_seed
         logging.info(f"__init__(): w2v params: {w2vparams}")
