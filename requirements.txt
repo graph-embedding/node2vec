@@ -1,0 +1,26 @@
+.
+
+# test requirements
+pre-commit
+mypy
+flake8
+autopep8
+pylint
+pytest~=5.4.1
+pytest-cov
+pytest-mock
+sphinx
+sphinx-rtd-theme
+
+cloudpickle~=1.4.1
+
+# publish to pypi
+wheel
+twine
+
+numpy~=1.18.2
+pandas~=1.0.1
+pyarrow~=0.16.0
+networkx~=2.4
+pyspark~=2.4.5
+setuptools~=46.0.0
