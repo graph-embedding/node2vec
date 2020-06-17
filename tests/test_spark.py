@@ -3,7 +3,7 @@ import networkx as nx
 from pyspark.sql import SparkSession
 from pyspark.sql import Row
 from pyspark.sql import functions as ssf
-from node2vec.spark import Node2VecSpark
+from node2vec.spark.spark import Node2VecSpark
 
 
 if __name__ == "__main__":
