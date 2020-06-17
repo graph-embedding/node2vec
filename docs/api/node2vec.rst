@@ -10,6 +10,14 @@ node2vec.constants
    :undoc-members:
    :show-inheritance:
 
+node2vec.utils
+---------------------
+
+.. automodule:: node2vec.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 node2vec.randomwalk
 -------------------
 
