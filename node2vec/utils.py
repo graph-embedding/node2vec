@@ -23,6 +23,9 @@ class Neighbors(object):
             self._keys = set(self.data[0])
         return self._keys
 
+    def __contains__(self, _id):
+        return _id in self.keys
+
     def items(self):
         return zip(self.data[0], self.data[1])
 
