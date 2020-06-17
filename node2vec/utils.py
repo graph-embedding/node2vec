@@ -23,9 +23,6 @@ class Neighbors(object):
             self._keys = set(self.data[0])
         return self._keys
 
-    def __contains__(self, id):
-        return id in self.keys
-
     def items(self):
         return zip(self.data[0], self.data[1])
 
@@ -62,11 +59,7 @@ class AliasProb(object):
     def serialize(self):
         return base64.b64encode(pickle.dumps(self._data)).decode()
 
-    def draw_alias(
-            self,
-            nbs: Neighbors,
-            seed: Optional[int] = None,
-    ) -> int:
+    def draw_alias(self, nbs: Neighbors, seed: Optional[int] = None,) -> int:
         """
         Draw sample from a non-uniform discrete distribution using alias sampling.
         Keep aligned with the original author's implementation to help parity tests.
@@ -100,11 +93,11 @@ class RandomPath(object):
         return self.data[-2], self.data[-1]
 
     def append(
-            self,
-            dst_neighbors: Neighbors,
-            alias_prob: AliasProb,
-            seed: Optional[int] = None,
-    ) -> "RandomPath":
+        self,
+        dst_neighbors: Neighbors,
+        alias_prob: AliasProb,
+        seed: Optional[int] = None,
+    ):
         """
         Extend the random walk path by making a biased random sampling at next step
 
@@ -131,9 +124,7 @@ class RandomPath(object):
 
 
 #
-def generate_alias_tables(
-    node_weights: List[float],
-) -> Tuple[List[int], List[float]]:
+def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, following the original
     node2vec code.

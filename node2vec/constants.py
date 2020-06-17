@@ -62,4 +62,3 @@ GENSIM_PARAMS: Dict[str, Any] = {
     # num of workers for parallel computing
     "workers": 16,
 }
-

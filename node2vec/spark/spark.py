@@ -289,9 +289,10 @@ class Node2VecSpark:
                         next_step_random_walk(
                             x[1][0]["path"],  # path
                             x[1][0]["rand"],  # random double
-                            x[1][1][0],       # dst_neighbors
-                            x[1][1][1],       # jvar
-                            x[1][1][2]),      # qvar
+                            x[1][1][0],  # dst_neighbors
+                            x[1][1][1],  # jvar
+                            x[1][1][2],
+                        ),  # qvar
                     )
                 )
                 .toDF(["id", "path"])

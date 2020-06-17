@@ -16,9 +16,7 @@ from node2vec.utils import generate_edge_alias_tables
 
 
 #
-def calculate_vertex_attributes(
-        df: pd.DataFrame,
-) -> Iterable[Dict[str, Any]]:
+def calculate_vertex_attributes(df: pd.DataFrame,) -> Iterable[Dict[str, Any]]:
     """
     A func to aggregate all neighbors and their weights for every node in the graph
 
@@ -26,24 +24,18 @@ def calculate_vertex_attributes(
 
     return a Iterable of dict, each of which is a row of the result df.
     """
-    df = df.sort_values(by=['dst'])
+    df = df.sort_values(by=["dst"])
     src = df.loc[0, "src"]
     nbs = Neighbors(df)
-    alias_prob = AliasProb(
-        generate_alias_tables(df["weight"].tolist())
+    alias_prob = AliasProb(generate_alias_tables(df["weight"].tolist()))
+    yield dict(
+        id=src, neighbors=nbs.serialize(), alias_prob=alias_prob.serialize(),
     )
-    yield dict(id=src,
-               neighbors=nbs.serialize(),
-               alias_prob=alias_prob.serialize(),
-               )
 
 
 #
 def calculate_edge_attributes(
-        df: pd.DataFrame,
-        num_walks: int,
-        return_param: float,
-        inout_param: float,
+    df: pd.DataFrame, num_walks: int, return_param: float, inout_param: float,
 ) -> Iterable[Dict[str, Any]]:
     """
     A func for running mapPartitions to initiate attributes for every edge in the graph
@@ -57,28 +49,27 @@ def calculate_edge_attributes(
     src_neighbors = df.loc[0, "src_neighbors"]
     alias_obj = AliasProb(generate_alias_tables(src_neighbors))
     for i in range(1, num_walks + 1):
-        yield dict(src=-i,
-                   dst=src,
-                   dst_neighbors=src_neighbors,
-                   alias_prob=alias_obj.serialize(),
-                   )
+        yield dict(
+            src=-i,
+            dst=src,
+            dst_neighbors=src_neighbors,
+            alias_prob=alias_obj.serialize(),
+        )
     for row in df:
-        dst_neighbors = row['dst_neighbors']
+        dst_neighbors = row["dst_neighbors"]
         alias_prob = generate_edge_alias_tables(
             src, src_neighbors, dst_neighbors, return_param, inout_param
         )
-        yield dict(src=src,
-                   dst=row["dst"],
-                   dst_neighbors=dst_neighbors,
-                   alias_prob=AliasProb(alias_prob).serialize(),
-                   )
+        yield dict(
+            src=src,
+            dst=row["dst"],
+            dst_neighbors=dst_neighbors,
+            alias_prob=AliasProb(alias_prob).serialize(),
+        )
 
 
 #
-def initiate_random_walk(
-        df: pd.DataFrame,
-        num_walks: int,
-) -> Iterable[Dict[str, Any]]:
+def initiate_random_walk(df: pd.DataFrame, num_walks: int,) -> Iterable[Dict[str, Any]]:
     """
     A func for running mapPartitions to initiate attributes for every node in the graph
 
@@ -97,9 +88,9 @@ def initiate_random_walk(
 
 #
 def next_step_random_walk(
-        df: Iterable[Dict[str, Any]],
-        nbs_col: str = "dst_neighbors",
-        seed: Optional[int] = None,
+    df: Iterable[Dict[str, Any]],
+    nbs_col: str = "dst_neighbors",
+    seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
 
@@ -135,10 +126,10 @@ def to_path(df: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
 #
 #
 def random_walk(
-        dag: FugueWorkflow,
-        graph: Union[pd.DataFrame, nx.Graph],
-        n2v_params: Dict[str, Any],
-        random_seed: Optional[int] = None,
+    dag: FugueWorkflow,
+    graph: Union[pd.DataFrame, nx.Graph],
+    n2v_params: Dict[str, Any],
+    random_seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
     A simulated random walk process. Current implementation is naive since it uses
@@ -176,24 +167,34 @@ def random_walk(
     edge_list = dag.create(graph, schema="src:long,dst:long,weight:double").persist()
 
     # process vertices
-    df_vertex = edge_list.partition(by=["src"]).transform(
-        calculate_vertex_attributes, schema="id:long,neighbors:str,alias_prob:str",
-    ).persist()
+    df_vertex = (
+        edge_list.partition(by=["src"])
+        .transform(
+            calculate_vertex_attributes, schema="id:long,neighbors:str,alias_prob:str",
+        )
+        .persist()
+    )
     # df_vertex.show(1, show_count=True)
 
     # process edges
     src_df = df_vertex[["id", "neighbors"]].rename(id="src", neighbors="src_neighbors")
     dst_df = df_vertex[["id", "neighbors"]].rename(id="dst", neighbors="dst_neighbors")
-    df_edge = (edge_list.join(src_df, on=["src"], how="inner")
-                        .join(dst_df, on=["dst"], how="inner")
-               )
-    df_edge = df_edge.partition(by=["src"]).transform(
-        calculate_edge_attributes,
-        schema="src:long,dst:long,dst_neighbors:str,alias_prob:str",
-        params=dict(num_walks=n2v_params["num_walks"],
-                    return_param=n2v_params["return_param"],
-                    inout_param=n2v_params["inout_param"]),
-    ).persist()
+    df_edge = edge_list.join(src_df, on=["src"], how="inner").join(
+        dst_df, on=["dst"], how="inner"
+    )
+    df_edge = (
+        df_edge.partition(by=["src"])
+        .transform(
+            calculate_edge_attributes,
+            schema="src:long,dst:long,dst_neighbors:str,alias_prob:str",
+            params=dict(
+                num_walks=n2v_params["num_walks"],
+                return_param=n2v_params["return_param"],
+                inout_param=n2v_params["inout_param"],
+            ),
+        )
+        .persist()
+    )
     # df_edge.show(1,show_count=True)
 
     # the initial state of random walk
