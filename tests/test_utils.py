@@ -13,6 +13,7 @@ from node2vec.utils import RandomPath
 #
 def test_class_neighbors():
     """
+    test class Neighbors
     """
     random.seed(20)
     # tuple
@@ -49,6 +50,7 @@ def test_class_neighbors():
 #
 def test_class_aliasprob():
     """
+    test class AliasProb
     """
     alias, probs = [1, 0], [0.6666666666666666, 1.0]
     code64 = u'gANdcQAoSwFLAGVdcQEoRz/lVVVVVVVVRz/wAAAAAAAAZYZxAi4='
@@ -65,6 +67,7 @@ def test_class_aliasprob():
         assert jq.serialize() == code64
 
         assert jq.draw_alias(nbs) == 22
+        assert jq.draw_alias(nbs, 10) == 22
 
     #
     alias, probs = [0, 0], [1.0, 0.5714285714285715]
@@ -106,6 +109,7 @@ def test_class_randompath(
         result: List[int],
 ) -> None:
     """
+    test class RandomPath
     """
     rp1 = RandomPath(path)
     rp2 = RandomPath(code)
@@ -137,6 +141,7 @@ def test_generate_alias_tables(
         result: Tuple[List[int], List[float]],
 ) -> None:
     """
+    test util func generate_alias_tables()
     """
     from node2vec.utils import generate_alias_tables
 
@@ -163,6 +168,7 @@ def test_generate_edge_alias_tables(
         result: Tuple[List[int], List[float]],
 ) -> None:
     """
+    test util func generate_edge_alias_tables()
     """
     from node2vec.utils import generate_edge_alias_tables
 
