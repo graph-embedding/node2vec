@@ -136,7 +136,7 @@ class Node2VecGensim(Node2VecBase):
         Returns a gensim model of Word2Vec
         """
         all_walks = self.walks.astype(str).tolist()
-        self.model = gensim.models.Word2Vec(sentences=all_walks, **self.w2v_params,)
+        self.model = gensim.models.Word2Vec(sentences=all_walks, **self.w2v_params)
         return self.model
 
     def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> Any:

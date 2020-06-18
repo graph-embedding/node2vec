@@ -16,7 +16,7 @@ from node2vec.utils import generate_edge_alias_tables
 
 
 #
-def calculate_vertex_attributes(df: pd.DataFrame,) -> Iterable[Dict[str, Any]]:
+def calculate_vertex_attributes(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     """
     A func to aggregate all neighbors and their weights for every node in the graph
 
@@ -69,7 +69,7 @@ def calculate_edge_attributes(
 
 
 #
-def initiate_random_walk(df: pd.DataFrame, num_walks: int,) -> Iterable[Dict[str, Any]]:
+def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str, Any]]:
     """
     A func for running mapPartitions to initiate attributes for every node in the graph
 
@@ -119,7 +119,7 @@ def to_path(df: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
     convert a random path from a list to a
     """
     for row in df:
-        path = RandomPath(row["path"]).data
+        path = RandomPath(row["path"]).path
         yield dict(src=path[0], walk=path)
 
 

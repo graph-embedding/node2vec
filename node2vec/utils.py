@@ -4,45 +4,44 @@ import base64
 import pandas as pd
 from typing import List
 from typing import Tuple
+from typing import Union
 from typing import Optional
 
 
 class Neighbors(object):
-    def __init__(self, obj):
+    def __init__(self, obj: Union[str, pd.DataFrame, Tuple[List[int], List[float]]]):
         if isinstance(obj, str):
-            self.data = pickle.loads(base64.b64decode(obj.encode()))
+            self._data = pickle.loads(base64.b64decode(obj.encode()))
         elif isinstance(obj, pd.DataFrame):
-            self.data = (obj["dst"].tolist(), obj["weight"].tolist())
-        elif isinstance(obj, tuple):
-            self.data = obj
-        self._keys = None
+            self._data = (obj["dst"].tolist(), obj["weight"].tolist())
+        else:
+            self._data = obj
 
     @property
-    def keys(self):
-        if self._keys is None:
-            self._keys = set(self.data[0])
-        return self._keys
+    def dst_id(self):
+        return self._data[0]
 
-    def __contains__(self, _id):
-        return _id in self.keys
+    @property
+    def dst_wt(self):
+        return self._data[1]
 
     def items(self):
-        return zip(self.data[0], self.data[1])
+        return zip(self._data[0], self._data[1])
 
     def serialize(self):
-        return base64.b64encode(pickle.dumps(self.data)).decode()
+        return base64.b64encode(pickle.dumps(self._data)).decode()
 
     def as_pandas(self):
-        return pd.DataFrame({"dst": self.data[0], "weight": self.data[1]})
+        return pd.DataFrame({"dst": self._data[0], "weight": self._data[1]})
 
 
 class AliasProb(object):
-    def __init__(self, obj):
+    def __init__(self, obj: Union[str, pd.DataFrame, Tuple[List[int], List[float]]]):
         if isinstance(obj, str):
             self._data = pickle.loads(base64.b64decode(obj.encode()))
         elif isinstance(obj, pd.DataFrame):
             self._data = (obj["alias"].tolist(), obj["probs"].tolist())
-        elif isinstance(obj, tuple):
+        else:
             self._data = obj
 
     @property
@@ -75,25 +74,31 @@ class AliasProb(object):
             random.seed(seed)
         pick = int(random.random() * len(self.alias))
         if random.random() < self.probs[pick]:
-            return nbs.data[0][pick]
+            return nbs.dst_id[pick]
         else:
-            return nbs.data[0][self.alias[pick]]
+            return nbs.dst_id[self.alias[pick]]
 
 
 class RandomPath(object):
-    def __init__(self, obj):
+    def __init__(self, obj: Union[str, List[int]]):
         if isinstance(obj, str):
-            self.data = pickle.loads(base64.b64decode(obj.encode()))
-        elif isinstance(obj, list):
-            self.data = obj
+            self._data = pickle.loads(base64.b64decode(obj.encode()))
+        else:
+            self._data = obj
 
     @property
     def path(self):
-        return self.data
+        return self._data
 
     @property
     def last_edge(self):
-        return self.data[-2], self.data[-1]
+        return self._data[-2], self._data[-1]
+
+    def serialize(self):
+        return base64.b64encode(pickle.dumps(self._data)).decode()
+
+    def __str__(self):
+        return self._data.__repr__()
 
     def append(
         self,
@@ -110,20 +115,14 @@ class RandomPath(object):
         Return the extended path with one more node in the random walk path.
         """
         next_vertex = alias_prob.draw_alias(dst_neighbors, seed)
-        path = list(self.data)
+        path = list(self._data)
         # first step
         if len(path) == 2 and path[0] < 0:
             path = [path[1], next_vertex]
         # remaining step
         else:
             path.append(next_vertex)
-        yield RandomPath(path)
-
-    def serialize(self):
-        return base64.b64encode(pickle.dumps(self.data)).decode()
-
-    def __str__(self):
-        return self.data.__repr__()
+        return RandomPath(path)
 
 
 #
