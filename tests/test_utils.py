@@ -153,16 +153,16 @@ def test_generate_alias_tables(
 @pytest.mark.parametrize(
     "src_id,src_nbs,dst_nbs,param_p,param_q,result",
     [
-        (0, [(1, 0.5), (2, 0.8), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
+        (0, ([1, 2, 3], [0.5, 0.8, 1.0]), ([0, 2], [0.5, 0.2]), 1.0, 1.0,
          ([0, 0], [1.0, 0.5714285714285715])),
-        (1, [[(0, 0.5), (2, 0.2)]], [(1, 0.2)], 0.8, 1.5, ([0], [1.0])),
-        (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 0], [0.4, 1.0])),
+        (1, ([0, 2], [0.5, 0.2]), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
+        (3, ([0], [1.0]), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
         src_id: int,
-        src_nbs: List[Tuple[int, float]],
-        dst_nbs: List[Tuple[int, float]],
+        src_nbs: Tuple[List[int], List[float]],
+        dst_nbs: Tuple[List[int], List[float]],
         param_p: float,
         param_q: float,
         result: Tuple[List[int], List[float]],
@@ -172,6 +172,7 @@ def test_generate_edge_alias_tables(
     """
     from node2vec.utils import generate_edge_alias_tables
 
+    # normal tests
     alias, probs = generate_edge_alias_tables(
         src_id, src_nbs, dst_nbs, param_p, param_q,
     )
@@ -180,5 +181,11 @@ def test_generate_edge_alias_tables(
 
     pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 0)
     pytest.raises(
-        ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 1.0, 0
+        ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 1.0, 0,
     )
+
+    # exception tests
+    src_nbs1 = (src_nbs[0][:-1], src_nbs[1])
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs1, dst_nbs)
+    dst_nbs1 = (dst_nbs[0], dst_nbs[1][:-1])
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs1)

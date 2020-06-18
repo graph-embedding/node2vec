@@ -42,28 +42,32 @@ def calculate_edge_attributes(
 
     :param df:
     :param num_walks:
-    :param return_param: defined above
-    :param inout_param: defined above
+    :param return_param:
+    :param inout_param:
     """
     src = df.loc[0, "src"]
-    src_neighbors = df.loc[0, "src_neighbors"]
-    alias_obj = AliasProb(generate_alias_tables(src_neighbors))
+    src_nbs_str = df.loc[0, "src_neighbors"]
+    src_nbs = Neighbors(src_nbs_str)
+    alias_obj = AliasProb(generate_alias_tables(src_nbs.dst_wt))
     for i in range(1, num_walks + 1):
         yield dict(
             src=-i,
             dst=src,
-            dst_neighbors=src_neighbors,
+            dst_neighbors=src_nbs_str,
             alias_prob=alias_obj.serialize(),
         )
-    for row in df:
-        dst_neighbors = row["dst_neighbors"]
+    src_nbs_data = (src_nbs.dst_id, src_nbs.dst_wt)
+    for _, row in df.iterrows():
+        row = dict(row)
+        dst_nbs = Neighbors(row["dst_neighbors"])
+        dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
         alias_prob = generate_edge_alias_tables(
-            src, src_neighbors, dst_neighbors, return_param, inout_param
+            src, src_nbs_data, dst_nbs_data, return_param, inout_param
         )
         yield dict(
             src=src,
             dst=row["dst"],
-            dst_neighbors=dst_neighbors,
+            dst_neighbors=row["dst_neighbors"],
             alias_prob=AliasProb(alias_prob).serialize(),
         )
 

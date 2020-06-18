@@ -162,8 +162,8 @@ def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[f
 
 def generate_edge_alias_tables(
     src_id: int,
-    src_neighbors: List[Tuple[int, float]],
-    dst_neighbors: List[Tuple[int, float]],
+    src_neighbors: Tuple[List[int], List[float]],
+    dst_neighbors: Tuple[List[int], List[float]],
     return_param: float = 1.0,
     inout_param: float = 1.0,
 ) -> Tuple[List[int], List[float]]:
@@ -179,14 +179,18 @@ def generate_edge_alias_tables(
 
     return the utility tables of the Alias method, after weights are biased.
     """
+    for nbs in [src_neighbors, dst_neighbors]:
+        if len(nbs) != 2 or len(nbs[0]) != len(nbs[1]):
+            raise ValueError(f"Invalid neighbors tuple '{nbs}'!")
     if return_param == 0 or inout_param == 0:
         raise ValueError(
             f"Zero return ({return_param}) or inout ({inout_param}) parameter!"
         )
-    src_neighbor_ids = {sid for sid, _ in src_neighbors}
+    src_neighbor_ids = set(src_neighbors[0])
     # apply bias to edge weights
     neighbors_dst: List[float] = []
-    for dst_neighbor_id, weight in dst_neighbors:
+    for i in range(len(dst_neighbors[0])):
+        dst_neighbor_id, weight = dst_neighbors[0][i], dst_neighbors[1][i]
         # go back to the src id
         if dst_neighbor_id == src_id:
             unnorm_prob = weight / return_param
