@@ -1,6 +1,6 @@
 import random
 import pandas as pd
-
+from fugue import FugueWorkflow
 from node2vec.utils import Neighbors
 from node2vec.utils import AliasProb
 from node2vec.utils import generate_alias_tables
@@ -77,7 +77,7 @@ def test_initiate_random_walk():
 
     random.seed(20)
     src, nbs, ap = [3, 2], [[0, 1, 2], [3, 1]], [u'abc', u'bcd']
-    df = pd.DataFrame.from_dict({'src': src, 'neighbors': nbs, 'alias_prob': ap})
+    df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
 
     num_walks = 3
     res = iter(initiate_random_walk(df, num_walks))
@@ -157,83 +157,25 @@ def test_to_path():
         assert ans['walk'] == path[i]
 
 
-# #
-# @pytest.mark.parametrize(
-#     "nbs,result",
-#     [
-#         ([(1, 0.5), (1, 0.8), (3, 1.0)], ([2, 0, 1], [0.6521739, 1.0, 0.9565217])),
-#         ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
-#         ([(1, 0.2)], ([0], [1.0])),
-#         ([(0, 1.0)], ([0], [1.0])),
-#     ],
-# )
-# def test_next_step_random_walk(
-#         nbs: List[Tuple[int, float]],
-#         result: Tuple[List[int], List[float]],
-# ) -> None:
-#     """
-#     test next_step_random_walk()
-#     """
-#     from node2vec.utils import generate_alias_tables
 #
-#     alias, probs = generate_alias_tables([w for _, w in nbs])
-#     assert alias == result[0]
-#     np.testing.assert_almost_equal(probs, result[1], decimal=7)
-#
-#
-# #
-# @pytest.mark.parametrize(
-#     "nbs,result",
-#     [
-#         ([(1, 0.5), (1, 0.8), (3, 1.0)], ([2, 0, 1], [0.6521739, 1.0, 0.9565217])),
-#         ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
-#         ([(1, 0.2)], ([0], [1.0])),
-#         ([(0, 1.0)], ([0], [1.0])),
-#     ],
-# )
-# def test_to_path(
-#         nbs: List[Tuple[int, float]],
-#         result: Tuple[List[int], List[float]],
-# ) -> None:
-#     """
-#     test to_path()
-#     """
-#     from node2vec.utils import generate_alias_tables
-#
-#     alias, probs = generate_alias_tables([w for _, w in nbs])
-#     assert alias == result[0]
-#     np.testing.assert_almost_equal(probs, result[1], decimal=7)
-#
-#
-# @pytest.mark.parametrize(
-#     "src_id,src_nbs,dst_nbs,param_p,param_q,result",
-#     [
-#         (0, [(1, 0.5), (2, 0.8), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
-#          ([0, 0], [1.0, 0.5714285714285715])),
-#         (1, [[(0, 0.5), (2, 0.2)]], [(1, 0.2)], 0.8, 1.5, ([0], [1.0])),
-#         (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 0], [0.4, 1.0])),
-#     ],
-# )
-# def test_random_walk(
-#         src_id: int,
-#         src_nbs: List[Tuple[int, float]],
-#         dst_nbs: List[Tuple[int, float]],
-#         param_p: float,
-#         param_q: float,
-#         result: Tuple[List[int], List[float]],
-# ) -> None:
-#     """
-#     test random_walk()
-#     """
-#     from node2vec.randomwalk import random_walk
-#
-#     alias, probs = generate_edge_alias_tables(
-#         src_id, src_nbs, dst_nbs, param_p, param_q,
-#     )
-#     assert alias == result[0]
-#     np.testing.assert_almost_equal(probs, result[1], decimal=7)
-#
-#     pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 0)
-#     pytest.raises(
-#         ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 1.0, 0
-#     )
+def test_random_walk():
+    """
+    test random_walk()
+    """
+    from node2vec.randomwalk import random_walk
+
+    graph = [(0, 2, 0.41), (0, 4, 0.85), (1, 5, 0.91), (2, 5, 0.3), (3, 4, 0.36),
+             (3, 5, 0.3), (2, 0, 0.68), (4, 0, 0.1), (5, 1, 0.28), (5, 2, 0.88),
+             (4, 3, 0.37), (5, 3, 0.97)]
+    df = pd.DataFrame(graph, columns=['src', 'dst', 'weight'])
+    n2v_params = {
+        "num_walks": 2,
+        "walk_length": 3,
+        "return_param": 0.5,
+    }
+    with FugueWorkflow() as dag:
+        res = random_walk(dag, graph, n2v_params)
+        assert res is not None
+
+        res = random_walk(dag, df, n2v_params)
+        assert res is not None

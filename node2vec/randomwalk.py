@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-import networkx as nx
+from typing import List
 from typing import Iterable
 from typing import Dict
 from typing import Any
@@ -82,7 +82,7 @@ def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str,
     return a Iterable of dict, each of which is a row of the result df.
     """
     for _, arow in df.iterrows():
-        src = arow["src"]
+        src = arow["id"]
         row = {"dst": src}
         for i in range(1, num_walks + 1):
             row.update({"src": -i, "path": [-i, src]})
@@ -91,9 +91,7 @@ def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str,
 
 #
 def next_step_random_walk(
-    df: pd.DataFrame,
-    nbs_col: str = "dst_neighbors",
-    seed: Optional[int] = None,
+    df: pd.DataFrame, nbs_col: str = "dst_neighbors", seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
     :param df: the partition of the vertex (random path) dataframe
@@ -127,7 +125,7 @@ def to_path(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
 #
 def random_walk(
     dag: FugueWorkflow,
-    graph: Union[pd.DataFrame, nx.Graph],
+    graph: Union[pd.DataFrame, List[tuple]],
     n2v_params: Dict[str, Any],
     random_seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
@@ -164,7 +162,7 @@ def random_walk(
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
 
-    edge_list = dag.create(graph, schema="src:long,dst:long,weight:double").persist()
+    edge_list = dag.df(graph, schema="src:long,dst:long,weight:double").persist()
 
     # process vertices
     df_vertex = (
@@ -174,7 +172,7 @@ def random_walk(
         )
         .persist()
     )
-    # df_vertex.show(1, show_count=True)
+    # df_vertex.show(6, show_count=True)
 
     # process edges
     src_df = df_vertex[["id", "neighbors"]].rename(id="src", neighbors="src_neighbors")
@@ -195,7 +193,7 @@ def random_walk(
         )
         .persist()
     )
-    # df_edge.show(1,show_count=True)
+    # df_edge.show(24, show_count=True)
 
     # the initial state of random walk
     walks = df_vertex.transform(
@@ -203,14 +201,21 @@ def random_walk(
         schema="src:long,dst:long,path:[int]",
         params=dict(num_walks=n2v_params["num_walks"]),
     ).persist()
+    # walks.show(12, show_count=True)
+
     for _ in range(n2v_params["walk_length"]):
-        walks = walks.join(df_edge, on=["src", "dst"], how="inner").transform(
-            next_step_random_walk,
-            schema="src:long,dst:long,path:[int]",
-            params=dict(seed=random_seed),
-        ).persist()
-        # walks.show(1)
-    df_walks = walks.transform(to_path, schema="*")
-    df_walks.show(show_count=True)
+        walks = (
+            walks.join(df_edge, on=["src", "dst"], how="inner")
+            .transform(
+                next_step_random_walk,
+                schema="src:long,dst:long,path:[int]",
+                params=dict(seed=random_seed),
+            )
+            .persist()
+        )
+        # walks.show(12, show_count=True)
+
+    df_walks = walks.transform(to_path, schema="src:long,walk:[int]")
+    # df_walks.show(12, show_count=True)
     logging.info("random_walk(): random walking done ...")
     return df_walks
