@@ -1,6 +1,8 @@
 import random
 import pandas as pd
 from fugue import FugueWorkflow
+from fugue_spark import SparkExecutionEngine
+from pyspark.sql import SparkSession
 from node2vec.utils import Neighbors
 from node2vec.utils import AliasProb
 from node2vec.utils import generate_alias_tables
@@ -164,9 +166,9 @@ def test_random_walk():
     """
     from node2vec.randomwalk import random_walk
 
-    graph = [(0, 2, 0.41), (0, 4, 0.85), (1, 5, 0.91), (2, 5, 0.3), (3, 4, 0.36),
-             (3, 5, 0.3), (2, 0, 0.68), (4, 0, 0.1), (5, 1, 0.28), (5, 2, 0.88),
-             (4, 3, 0.37), (5, 3, 0.97)]
+    graph = [[0, 2, 0.41], [0, 4, 0.85], [1, 5, 0.91], [2, 5, 0.3], [3, 4, 0.36],
+             [3, 5, 0.3], [2, 0, 0.68], [4, 0, 0.1], [5, 1, 0.28], [5, 2, 0.88],
+             [4, 3, 0.37], [5, 3, 0.97]]
     df = pd.DataFrame(graph, columns=['src', 'dst', 'weight'])
     n2v_params = {
         "num_walks": 2,
@@ -179,3 +181,9 @@ def test_random_walk():
 
         res = random_walk(dag, df, n2v_params)
         assert res is not None
+
+    spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
+    with FugueWorkflow(SparkExecutionEngine(spark)) as dag:
+        res = random_walk(dag, graph, n2v_params)
+        assert res is not None
+
