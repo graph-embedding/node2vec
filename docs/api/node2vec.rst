@@ -11,17 +11,25 @@ node2vec.constants
    :show-inheritance:
 
 node2vec.utils
--------------------
+---------------------
 
 .. automodule:: node2vec.utils
    :members:
    :undoc-members:
    :show-inheritance:
 
-node2vec.spark
+node2vec.randomwalk
+-------------------
+
+.. automodule:: node2vec.randomwalk
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+node2vec.embedding
 ----------------
 
-.. automodule:: node2vec.spark
+.. automodule:: node2vec.embedding
    :members:
    :undoc-members:
    :show-inheritance:

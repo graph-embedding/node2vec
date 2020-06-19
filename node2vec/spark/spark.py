@@ -15,10 +15,10 @@ from pyspark.ml.feature import Word2VecModel
 
 from node2vec.constants import NUM_PARTITIONS
 from node2vec.constants import WORD2VEC_PARAMS
-from node2vec.utils import next_step_random_walk
-from node2vec.utils import aggregate_vertex_neighbors
-from node2vec.utils import calculate_vertex_attributes
-from node2vec.utils import calculate_edge_attributes
+from node2vec.spark.utils import next_step_random_walk
+from node2vec.spark.utils import aggregate_vertex_neighbors
+from node2vec.spark.utils import calculate_vertex_attributes
+from node2vec.spark.utils import calculate_edge_attributes
 
 
 class Node2VecSpark:
