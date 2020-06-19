@@ -58,7 +58,6 @@ def calculate_edge_attributes(
         )
     src_nbs_data = (src_nbs.dst_id, src_nbs.dst_wt)
     for _, row in df.iterrows():
-        row = dict(row)
         dst_nbs = Neighbors(row["dst_neighbors"])
         dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
         alias_prob = generate_edge_alias_tables(
@@ -82,47 +81,44 @@ def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str,
 
     return a Iterable of dict, each of which is a row of the result df.
     """
-    for arow in df:
+    for _, arow in df.iterrows():
         src = arow["src"]
         row = {"dst": src}
         for i in range(1, num_walks + 1):
-            row.update({"src": -i, "path": RandomPath([-i, src])})
+            row.update({"src": -i, "path": [-i, src]})
             yield row
 
 
 #
 def next_step_random_walk(
-    df: Iterable[Dict[str, Any]],
+    df: pd.DataFrame,
     nbs_col: str = "dst_neighbors",
     seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
-
     :param df: the partition of the vertex (random path) dataframe
     :param nbs_col: the name of the dst neighbor col
     :param seed: optional random seed, for testing only
 
     Extend the random walk path by one more step
     """
-    for row in df:
+    for _, row in df.iterrows():
         if row[nbs_col] is not None:
             nbs = Neighbors(row[nbs_col])
             alias_prob = AliasProb(row["alias_prob"])
             path = RandomPath(row["path"])
-
             _p = path.append(nbs, alias_prob, seed)
-            row["path"] = _p.serialize()
-            row["src"], row["dst"] = _p.last_edge
 
+            row = {"src": _p.last_edge[0], "dst": _p.last_edge[1], "path": _p.path}
         yield row
 
 
 #
-def to_path(df: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+def to_path(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     """
     convert a random path from a list to a
     """
-    for row in df:
+    for _, row in df.iterrows():
         path = RandomPath(row["path"]).path
         yield dict(src=path[0], walk=path)
 
@@ -204,14 +200,15 @@ def random_walk(
     # the initial state of random walk
     walks = df_vertex.transform(
         initiate_random_walk,
-        schema="src:long,dst:long,path:str",
+        schema="src:long,dst:long,path:[int]",
         params=dict(num_walks=n2v_params["num_walks"]),
     ).persist()
     for _ in range(n2v_params["walk_length"]):
         walks = walks.join(df_edge, on=["src", "dst"], how="inner").transform(
-            next_step_random_walk, schema="*", params=dict(seed=random_seed),
-        )
-        walks = walks[["src", "dst", "path"]].persist()
+            next_step_random_walk,
+            schema="src:long,dst:long,path:[int]",
+            params=dict(seed=random_seed),
+        ).persist()
         # walks.show(1)
     df_walks = walks.transform(to_path, schema="*")
     df_walks.show(show_count=True)
