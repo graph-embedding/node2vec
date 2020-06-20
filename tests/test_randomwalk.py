@@ -2,6 +2,7 @@ import random
 import pandas as pd
 from fugue import ArrayDataFrame
 from fugue import NativeExecutionEngine
+from fugue_spark import SparkDataFrame
 from fugue_spark import SparkExecutionEngine
 from pyspark.sql import SparkSession
 from pyspark.sql import Row
@@ -181,6 +182,6 @@ def test_random_walk():
 
     spark = SparkSession.builder.appName("node2vec-fugue").getOrCreate()
     r = Row("src", "dst", "weight")
-    spark_df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
-    res = random_walk(SparkExecutionEngine(spark), spark_df, n2v_params)
+    df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
+    res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)
     assert res is not None

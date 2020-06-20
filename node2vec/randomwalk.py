@@ -123,7 +123,7 @@ def to_path(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
 #
 #
 def random_walk(
-    engine: FugueExecutionEngine,
+    compute_engine: FugueExecutionEngine,
     df_graph: FugueDataFrame,
     n2v_params: Dict[str, Any],
     random_seed: Optional[int] = None,
@@ -141,7 +141,7 @@ def random_walk(
     more computing resources. Overall, this "node2vec" implementation is very
     computing and memory intensive.
 
-    :param engine: an execution engine supported by Fugue
+    :param compute_engine: an execution engine supported by Fugue
     :param df_graph: the input graph data as general Fugue dataframe
     :param n2v_params: the node2vec params
     :param random_seed: optional random seed, for testing only
@@ -161,7 +161,7 @@ def random_walk(
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
 
-    with FugueWorkflow(engine) as dag:
+    with FugueWorkflow(compute_engine) as dag:
         edge_list = dag.df(df_graph).persist()
         # process vertices
         df_vertex = (

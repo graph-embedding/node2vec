@@ -13,13 +13,10 @@ if __name__ == "__main__":
     """
     spark = SparkSession.builder.appName("node2vec-test").getOrCreate()
     sc = spark.sparkContext
-    graph = nx.fast_gnp_random_graph(n=1000, p=0.01)
-    cols = ["src", "dst"]
+    graph = nx.fast_gnp_random_graph(n=10, p=0.2)
+    r = Row("src", "dst")
     data = [list(x) for x in graph.edges]
-    df = (sc.parallelize(zip(*data))
-            .map(lambda x: Row(**{cols[i]: elt for i, elt in enumerate(x)}))
-            .toDF()
-          )
+    df = sc.parallelize([r(*x) for x in data]).toDF()
     df = df.withColumn("weight", ssf.lit(random.random()))
     g2v = Node2VecSpark(
         spark=spark,
