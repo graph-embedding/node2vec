@@ -47,7 +47,7 @@ GENSIM_PARAMS: Dict[str, Any] = {
     "seed": None,
     # max length (in words) of each sentence in the input data. Any sentence longer
     # than this threshold will be divided into chunks up to the size
-    "batch_words": 10000,
+    "batch_words": 1000,
     # num of neighborhood nodes (context [-window, window])
     "window": 5,
     # num of dimensions of the output graph embedding representation, e.g. 64, 128, 256
