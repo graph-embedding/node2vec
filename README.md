@@ -15,6 +15,10 @@ pip install node2vec-fugue
 
 ## Release History
 
+### 0.2.1
+* change the interface to support backend compute engine
+* use iterable to replace most pandas usage
+
 ### 0.2.0
 * support fugue based node2vec
 * not yet support input format validation and vertex indexing

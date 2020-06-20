@@ -1,8 +1,11 @@
 import random
 import pandas as pd
-from fugue import FugueWorkflow
+from fugue import ArrayDataFrame
+from fugue import NativeExecutionEngine
+from fugue_spark import SparkDataFrame
 from fugue_spark import SparkExecutionEngine
 from pyspark.sql import SparkSession
+from pyspark.sql import Row
 from node2vec.utils import Neighbors
 from node2vec.utils import AliasProb
 from node2vec.utils import generate_alias_tables
@@ -43,11 +46,13 @@ def test_calculate_edge_attributes():
         Neighbors(([0, 2, 4], [0.5, 0.9, 1.0])).serialize(),
         Neighbors(([0, 1], [1.2, 0.9])).serialize(),
     ]
-    df = pd.DataFrame.from_dict({
-        'src': src, 'dst': dst,
-        'src_neighbors': src_neighbors,
-        'dst_neighbors': dst_neighbors
-    })
+    # df = pd.DataFrame.from_dict({
+    #     'src': src, 'dst': dst,
+    #     'src_neighbors': src_neighbors,
+    #     'dst_neighbors': dst_neighbors
+    # })
+    df = [{'src': src[i], 'dst': dst[i], 'src_neighbors': src_neighbors[i],
+           'dst_neighbors': dst_neighbors[i]} for i in range(len(src))]
     code64 = u'gANdcQAoSwFLAksDZV1xAShHP+AAAAAAAABHP/MzMzMzMzNHP+ZmZmZmZmZlhnECLg=='
     ap64 = u'gANdcQAoSwFLAEsBZV1xAShHP+QAAAAAAABHP/AAAAAAAABHP+wAAAAAAABlhnECLg=='
 
@@ -79,7 +84,9 @@ def test_initiate_random_walk():
 
     random.seed(20)
     src, nbs, ap = [3, 2], [[0, 1, 2], [3, 1]], [u'abc', u'bcd']
-    df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
+    # df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
+    df = [{"id": src[i], "neighbors": nbs[i], "alias_prob": ap[i]}
+          for i in range(len(src))]
 
     num_walks = 3
     res = iter(initiate_random_walk(df, num_walks))
@@ -112,13 +119,16 @@ def test_next_step_random_walk():
         AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
         AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
     ]
-    df = pd.DataFrame.from_dict({
-        'src': src,
-        'dst': dst,
-        'path': path,
-        'dst_neighbors': dst_neighbors,
-        'alias_prob': alias_prob,
-    })
+    # df = pd.DataFrame.from_dict({
+    #     'src': src,
+    #     'dst': dst,
+    #     'path': path,
+    #     'dst_neighbors': dst_neighbors,
+    #     'alias_prob': alias_prob,
+    # })
+    df = [{"src": src[i], "dst": dst[i], "path": path[i],
+           "dst_neighbors": dst_neighbors[i], "alias_prob": alias_prob[i]}
+          for i in range(len(src))]
 
     res = iter(next_step_random_walk(df))
     ans = next(res)
@@ -150,7 +160,8 @@ def test_to_path():
     from node2vec.randomwalk import to_path
 
     src, dst, path = [0, 1, 2], [2, 3, 4], [[1, 0, 2], [1, 3], [0, 2, 4]]
-    df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'path': path})
+    # df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'path': path})
+    df = [{'src': src[i], 'dst': dst[i], 'path': path[i]} for i in range(len(src))]
     res = iter(to_path(df))
     for i in range(len(src)):
         ans = next(res)
@@ -169,21 +180,16 @@ def test_random_walk():
     graph = [[0, 2, 0.41], [0, 4, 0.85], [1, 5, 0.91], [2, 5, 0.3], [3, 4, 0.36],
              [3, 5, 0.3], [2, 0, 0.68], [4, 0, 0.1], [5, 1, 0.28], [5, 2, 0.88],
              [4, 3, 0.37], [5, 3, 0.97]]
-    df = pd.DataFrame(graph, columns=['src', 'dst', 'weight'])
-    n2v_params = {
-        "num_walks": 2,
-        "walk_length": 3,
-        "return_param": 0.5,
-    }
-    with FugueWorkflow() as dag:
-        res = random_walk(dag, graph, n2v_params)
-        assert res is not None
+    df = ArrayDataFrame(graph, schema="src:long,dst:long,weight:double")
+    n2v_params = {"num_walks": 2, "walk_length": 3, "return_param": 0.5}
 
-        res = random_walk(dag, df, n2v_params)
-        assert res is not None
+    res = random_walk(NativeExecutionEngine(), df, n2v_params)
+    assert res is not None
+    res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params)
+    assert res is not None
 
-    spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
-    with FugueWorkflow(SparkExecutionEngine(spark)) as dag:
-        res = random_walk(dag, graph, n2v_params)
-        assert res is not None
-
+    spark = SparkSession.builder.appName("node2vec-fugue").getOrCreate()
+    r = Row("src", "dst", "weight")
+    df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
+    res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)
+    assert res is not None
