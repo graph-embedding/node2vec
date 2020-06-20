@@ -2,8 +2,8 @@
 
 [![PyPI pyversions](https://img.shields.io/pypi/pyversions/node2vec-fugue.svg)](https://pypi.python.org/pypi/node2vec-fugue/)
 [![PyPI license](https://img.shields.io/pypi/l/node2vec-fugue.svg)](https://pypi.python.org/pypi/node2vec-fugue/)
-[![PyPI version](https://badge.fury.io/py/node2vec-fugue.svg)](https://pypi.python.org/pypi/node2vec-fugue/)
-[![Coverage Status](https://coveralls.io/repos/github/fugue-project/node2vec/badge.svg)](https://coveralls.io/github/fugue-project/node2vec)
+[![PyPI version](https://badge.fury.io/py/node2vec-fugue.svg?branch=master)](https://pypi.python.org/pypi/node2vec-fugue/)
+[![Coverage Status](https://coveralls.io/repos/github/fugue-project/node2vec/badge.svg?branch=master)](https://coveralls.io/github/fugue-project/node2vec?branch=master)
 
 A highly scalable distributed node2vec algorithm
 
@@ -14,6 +14,10 @@ pip install node2vec-fugue
 
 
 ## Release History
+
+### 0.2.1
+* change the interface to support backend compute engine
+* use iterable to replace most pandas usage
 
 ### 0.2.0
 * support fugue based node2vec
