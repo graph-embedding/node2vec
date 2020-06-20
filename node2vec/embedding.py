@@ -14,9 +14,10 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 from pyspark.sql import DataFrame
-import gensim.models.Word2Vec as GensimW2V
-import pyspark.ml.feature.Word2Vec as SparkW2V
-import pyspark.ml.feature.Word2VecModel as SparkW2VModel
+from gensim.models import Word2Vec as GensimW2V
+from pyspark.ml.feature import Word2Vec as SparkW2V
+from pyspark.ml.feature import Word2VecModel as SparkW2VModel
+
 from node2vec.constants import WORD2VEC_PARAMS
 from node2vec.constants import GENSIM_PARAMS
 

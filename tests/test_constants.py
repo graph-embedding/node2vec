@@ -1,13 +1,3 @@
-def test_num_partitions() -> None:
-    """
-    test constant NUM_PARTITIONS
-    """
-    from node2vec.constants import NUM_PARTITIONS
-
-    assert isinstance(NUM_PARTITIONS, int)
-    assert NUM_PARTITIONS > 0
-
-
 def test_node2vec_params() -> None:
     """
     test dict constant NODE2VEC_PARAMS
