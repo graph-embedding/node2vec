@@ -180,10 +180,7 @@ def test_random_walk():
     assert res is not None
 
     spark = SparkSession.builder.appName("node2vec-fugue").getOrCreate()
-    cols = ["src", "dst", "weight"]
-    spark_df = (spark.sparkContext.parallelize(zip(*graph))
-            .map(lambda x: Row(**{cols[i]: elt for i, elt in enumerate(x)}))
-            .toDF()
-          )
+    r = Row("src", "dst", "weight")
+    spark_df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
     res = random_walk(SparkExecutionEngine(spark), spark_df, n2v_params)
     assert res is not None
