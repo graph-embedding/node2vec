@@ -1,10 +1,10 @@
 import random
 import pandas as pd
 from fugue import ArrayDataFrame
-from fugue_spark import SparkDataFrame
 from fugue import NativeExecutionEngine
 from fugue_spark import SparkExecutionEngine
 from pyspark.sql import SparkSession
+from pyspark.sql import Row
 from node2vec.utils import Neighbors
 from node2vec.utils import AliasProb
 from node2vec.utils import generate_alias_tables
@@ -176,8 +176,14 @@ def test_random_walk():
 
     res = random_walk(NativeExecutionEngine(), df, n2v_params)
     assert res is not None
+    res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params)
+    assert res is not None
 
-    spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
-    spark_df = spark.createDataFrame(df.as_pandas())
+    spark = SparkSession.builder.appName("node2vec-fugue").getOrCreate()
+    cols = ["src", "dst", "weight"]
+    spark_df = (spark.sparkContext.parallelize(zip(*graph))
+            .map(lambda x: Row(**{cols[i]: elt for i, elt in enumerate(x)}))
+            .toDF()
+          )
     res = random_walk(SparkExecutionEngine(spark), spark_df, n2v_params)
     assert res is not None
