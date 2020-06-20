@@ -46,11 +46,13 @@ def test_calculate_edge_attributes():
         Neighbors(([0, 2, 4], [0.5, 0.9, 1.0])).serialize(),
         Neighbors(([0, 1], [1.2, 0.9])).serialize(),
     ]
-    df = pd.DataFrame.from_dict({
-        'src': src, 'dst': dst,
-        'src_neighbors': src_neighbors,
-        'dst_neighbors': dst_neighbors
-    })
+    # df = pd.DataFrame.from_dict({
+    #     'src': src, 'dst': dst,
+    #     'src_neighbors': src_neighbors,
+    #     'dst_neighbors': dst_neighbors
+    # })
+    df = [{'src': src[i], 'dst': dst[i], 'src_neighbors': src_neighbors[i],
+           'dst_neighbors': dst_neighbors[i]} for i in range(len(src))]
     code64 = u'gANdcQAoSwFLAksDZV1xAShHP+AAAAAAAABHP/MzMzMzMzNHP+ZmZmZmZmZlhnECLg=='
     ap64 = u'gANdcQAoSwFLAEsBZV1xAShHP+QAAAAAAABHP/AAAAAAAABHP+wAAAAAAABlhnECLg=='
 
@@ -82,7 +84,9 @@ def test_initiate_random_walk():
 
     random.seed(20)
     src, nbs, ap = [3, 2], [[0, 1, 2], [3, 1]], [u'abc', u'bcd']
-    df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
+    # df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
+    df = [{"id": src[i], "neighbors": nbs[i], "alias_prob": ap[i]}
+          for i in range(len(src))]
 
     num_walks = 3
     res = iter(initiate_random_walk(df, num_walks))
@@ -115,13 +119,16 @@ def test_next_step_random_walk():
         AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
         AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
     ]
-    df = pd.DataFrame.from_dict({
-        'src': src,
-        'dst': dst,
-        'path': path,
-        'dst_neighbors': dst_neighbors,
-        'alias_prob': alias_prob,
-    })
+    # df = pd.DataFrame.from_dict({
+    #     'src': src,
+    #     'dst': dst,
+    #     'path': path,
+    #     'dst_neighbors': dst_neighbors,
+    #     'alias_prob': alias_prob,
+    # })
+    df = [{"src": src[i], "dst": dst[i], "path": path[i],
+           "dst_neighbors": dst_neighbors[i], "alias_prob": alias_prob[i]}
+          for i in range(len(src))]
 
     res = iter(next_step_random_walk(df))
     ans = next(res)
@@ -153,7 +160,8 @@ def test_to_path():
     from node2vec.randomwalk import to_path
 
     src, dst, path = [0, 1, 2], [2, 3, 4], [[1, 0, 2], [1, 3], [0, 2, 4]]
-    df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'path': path})
+    # df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'path': path})
+    df = [{'src': src[i], 'dst': dst[i], 'path': path[i]} for i in range(len(src))]
     res = iter(to_path(df))
     for i in range(len(src)):
         ans = next(res)

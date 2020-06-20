@@ -33,7 +33,10 @@ def calculate_vertex_attributes(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
 
 # schema: src:long,dst:long,dst_neighbors:str,alias_prob:str
 def calculate_edge_attributes(
-    df: pd.DataFrame, num_walks: int, return_param: float, inout_param: float,
+    df: Iterable[Dict[str, Any]],
+    num_walks: int,
+    return_param: float,
+    inout_param: float,
 ) -> Iterable[Dict[str, Any]]:
     """
     A func for running mapPartitions to initiate attributes for every edge in the graph
@@ -44,34 +47,31 @@ def calculate_edge_attributes(
     :param inout_param:
 
     """
-    src = df.loc[0, "src"]
-    src_nbs_str = df.loc[0, "src_neighbors"]
-    src_nbs = Neighbors(src_nbs_str)
-    alias_obj = AliasProb(generate_alias_tables(src_nbs.dst_wt))
-    for i in range(1, num_walks + 1):
-        yield dict(
-            src=-i,
-            dst=src,
-            dst_neighbors=src_nbs_str,
-            alias_prob=alias_obj.serialize(),
-        )
-    src_nbs_data = (src_nbs.dst_id, src_nbs.dst_wt)
-    for _, row in df.iterrows():
-        dst_nbs = Neighbors(row["dst_neighbors"])
+    is_first = True
+    for row in df:
+        src, src_nbs_str = row["src"], row["src_neighbors"]
+        src_nbs = Neighbors(src_nbs_str)
+        src_nbs_data = (src_nbs.dst_id, src_nbs.dst_wt)
+        if is_first is True:
+            apstr = AliasProb(generate_alias_tables(src_nbs.dst_wt)).serialize()
+            for i in range(1, num_walks + 1):
+                yield dict(src=-i, dst=src, dst_neighbors=src_nbs_str, alias_prob=apstr)
+            is_first = False
+
+        dst_nbs_str = row["dst_neighbors"]
+        dst_nbs = Neighbors(dst_nbs_str)
         dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
         alias_prob = generate_edge_alias_tables(
-            src, src_nbs_data, dst_nbs_data, return_param, inout_param
+            src, src_nbs_data, dst_nbs_data, return_param, inout_param,
         )
-        yield dict(
-            src=src,
-            dst=row["dst"],
-            dst_neighbors=row["dst_neighbors"],
-            alias_prob=AliasProb(alias_prob).serialize(),
-        )
+        apstr = AliasProb(alias_prob).serialize()
+        yield dict(src=src, dst=row["dst"], dst_neighbors=dst_nbs_str, alias_prob=apstr)
 
 
 # schema: src:long,dst:long,path:[int]
-def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str, Any]]:
+def initiate_random_walk(
+    df: Iterable[Dict[str, Any]], num_walks: int,
+) -> Iterable[Dict[str, Any]]:
     """
     A func for running mapPartitions to initiate attributes for every node in the graph
 
@@ -80,7 +80,7 @@ def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str,
 
     return a Iterable of dict, each of which is a row of the result df.
     """
-    for _, arow in df.iterrows():
+    for arow in df:
         src = arow["id"]
         row = {"dst": src}
         for i in range(1, num_walks + 1):
@@ -90,7 +90,9 @@ def initiate_random_walk(df: pd.DataFrame, num_walks: int) -> Iterable[Dict[str,
 
 # schema: src:long,dst:long,path:[int]
 def next_step_random_walk(
-    df: pd.DataFrame, nbs_col: str = "dst_neighbors", seed: Optional[int] = None,
+    df: Iterable[Dict[str, Any]],
+    nbs_col: str = "dst_neighbors",
+    seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
     Extend the random walk path by one more step
@@ -99,7 +101,7 @@ def next_step_random_walk(
     :param nbs_col: the name of the dst neighbor col
     :param seed: optional random seed, for testing only
     """
-    for _, row in df.iterrows():
+    for row in df:
         if row[nbs_col] is not None:
             nbs = Neighbors(row[nbs_col])
             alias_prob = AliasProb(row["alias_prob"])
@@ -111,11 +113,11 @@ def next_step_random_walk(
 
 
 # schema: src:long,walk:[int]
-def to_path(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
+def to_path(df: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
     """
     convert a random path from a list to a pair [src, walk]
     """
-    for _, row in df.iterrows():
+    for row in df:
         path = RandomPath(row["path"]).path
         yield dict(src=path[0], walk=path)
 

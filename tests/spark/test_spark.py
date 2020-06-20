@@ -24,7 +24,7 @@ if __name__ == "__main__":
         indexed=True,
         directed=False,
         num_walks=2,
-        walk_length=5,
+        walk_length=3,
         return_param=0.8,
         inout_param=1.5,
         vector_size=128,
