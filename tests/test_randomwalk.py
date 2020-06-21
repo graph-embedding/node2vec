@@ -188,7 +188,7 @@ def test_random_walk():
     res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params)
     assert res is not None
 
-    spark = SparkSession.builder.appName("node2vec-fugue").getOrCreate()
+    spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
     r = Row("src", "dst", "weight")
     df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
     res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)

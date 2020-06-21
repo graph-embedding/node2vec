@@ -1,19 +1,14 @@
 import logging
-import os
-import sys
 import time
-import json
-import joblib
-import shutil
-import sklearn
-import tempfile
 import gensim
 import pandas as pd
+import numpy as np
 from typing import Union
 from typing import Any
 from typing import Dict
 from typing import Optional
 from pyspark.sql import DataFrame
+from gensim.models import KeyedVectors
 from gensim.models import Word2Vec as GensimW2V
 from pyspark.ml.feature import Word2Vec as SparkW2V
 from pyspark.ml.feature import Word2VecModel as SparkW2VModel
@@ -42,23 +37,6 @@ class Node2VecBase(object):
         """
         vertex_id: str or int, either the node ID or name depending on graph format
         Return vector associated with a node identified by the original node name/id
-        """
-        raise NotImplementedError()
-
-    def save_vectors(self, file_path: str, file_name: str):
-        """
-        Save as graph embedding vectors as a dataFrame
-        :param file_path: a gcs or s3 bucket, or local folder
-        :param file_name: the name to be used for the model file
-        """
-        raise NotImplementedError()
-
-    def load_vectors(self, file_path: str, file_name: str):
-        """
-        Load graph embedding vectors from saved file to a dataFrame
-        :param file_path: a gcs or s3 bucket, or local folder
-        :param file_name: the name to be used for the model file
-        returns a dataframe
         """
         raise NotImplementedError()
 
@@ -116,18 +94,21 @@ class Node2VecGensim(Node2VecBase):
         self.walks = df_walks
         self.model: Optional[GensimW2V] = None
 
-        if w2v_params is None:
+        if w2v_params is not None:
+            tmp_param = GENSIM_PARAMS.copy()
+            tmp_param.update(w2v_params)
+            w2v_params = tmp_param
+        else:
             w2v_params = GENSIM_PARAMS
-        if w2v_params.get("seed", None) is None:
-            w2v_params["seed"] = random_seed or int(round(time.time() * 1000))
+        w2v_params["seed"] = random_seed if random_seed else int(time.time()) // 60
         if window_size is not None:
             if window_size < 5 or window_size > 40:
                 raise ValueError(f"Inappropriate context window size {window_size}!")
-            w2v_params["windowSize"] = window_size
+            w2v_params["window"] = window_size
         if vector_size is not None:
             if vector_size < 32 or vector_size > 1024:
                 raise ValueError(f"Inappropriate vector dimension {vector_size}!")
-            w2v_params["vectorSize"] = vector_size
+            w2v_params["size"] = vector_size
         logging.info(f"__init__(): w2v params: {w2v_params}")
         self.w2v_params = w2v_params
 
@@ -136,27 +117,29 @@ class Node2VecGensim(Node2VecBase):
         the entry point for fitting a node2vec process for graph feature embedding
         Returns a gensim model of Word2Vec
         """
-        all_walks = self.walks.astype(str).tolist()
+        all_walks = np.array(self.walks["walk"].tolist()).astype(str).tolist()
         self.model = gensim.models.Word2Vec(sentences=all_walks, **self.w2v_params)
         return self.model
 
-    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> Any:
+    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> KeyedVectors:
         """
         Return vector associated with a node identified by the original node name/id
         """
         if vertex_id is None:
             return self.model.wv  # type: ignore
+        if isinstance(vertex_id, int):
+            vertex_id = str(vertex_id)
         return self.model.wv.__getitem__(vertex_id)  # type: ignore
 
-    def save(self, file_path: str, file_name: str) -> None:
+    def save_model(self, file_path: str, file_name: str) -> None:
         """
-        Save as embeddings in gensim.models.KeyedVectors format
+        Save model of gensim.models.Word2Vec into a folder
         """
         self.model.save(file_path + "/" + file_name + ".model")  # type: ignore
 
-    def load(self, file_path: str, file_name: str) -> GensimW2V:
+    def load_model(self, file_path: str, file_name: str) -> GensimW2V:
         """
-        Load embeddings from gensim.models.KeyedVectors format from
+        Load trained model of gensim.models.Word2Vec to the model
         """
         self.model = GensimW2V.load(file_path + "/" + file_name + ".model")
         return self.model
@@ -167,57 +150,13 @@ class Node2VecGensim(Node2VecBase):
         """
         self.model.wv.save_word2vec_format(file_path + "/" + file_name)  # type: ignore
 
-    def load_vectors(self, file_path: str, file_name: str) -> None:
+    @staticmethod
+    def load_vectors(file_path: str, file_name: str) -> KeyedVectors:
         """
-        Load embeddings from gensim.models.KeyedVectors format from
+        Load embeddings from gensim.models.KeyedVectors format
         """
-        self.model = gensim.wv.load_word2vec_format(file_path + "/" + file_name)
-
-    def save_model(self, file_path: str, file_name: str) -> None:
-        """
-        Saves the word2vec model to a zipfile with joblib dump (pickle-like) +
-        dependency metadata. Metadata is checked on load. Includes validation and
-        metadata to avoid Pickle deserialization gotchas.
-
-        Refer to Alex Gaynor PyCon 2014 talk "Pickles are for Delis" for the reason of
-        this additional check
-        """
-        sysverinfo = sys.version_info
-        meta_data = {
-            "python_": f"{sysverinfo[0]}.{sysverinfo[1]}",
-            "skl_": sklearn.__version__[:-2],
-        }
-        with tempfile.TemporaryDirectory() as temp_dir:
-            joblib.dump(self, os.path.join(temp_dir, self.f_model), compress=True)
-            with open(os.path.join(temp_dir, self.f_mdata), "w") as f:
-                json.dump(meta_data, f)
-            shutil.make_archive(file_path + "/" + file_name, "zip", temp_dir)
-
-    def load_model(self, file_path: str, file_name: str) -> Any:
-        """
-        Load model from NodeEmbedding model zip file.
-        Loading checks for metadata and raises ValueError if pkg versions don't match.
-
-        Returns the model object.
-        """
-        with tempfile.TemporaryDirectory() as temp_dir:
-            shutil.unpack_archive(file_path + ".zip", temp_dir, "zip")
-            self.model = joblib.load(os.path.join(temp_dir, self.f_model))
-
-            # Validate the metadata
-            with open(os.path.join(temp_dir, self.f_mdata)) as f:
-                meta_data = json.load(f)
-            pyver = "{0}.{1}".format(sys.version_info[0], sys.version_info[1])
-            if meta_data["python_"] != pyver:
-                raise ValueError(
-                    f"Python version {pyver} NOT match metadata {meta_data['python_']}!"
-                )
-            sklver = sklearn.__version__[:-2]
-            if meta_data["skl_"] != sklver:
-                raise ValueError(
-                    f"sklearn version {sklver} NOT match metadata {meta_data['skl_']}"
-                )
-            return self.model
+        model_wv = KeyedVectors.load_word2vec_format(file_path + "/" + file_name)
+        return model_wv
 
 
 #
@@ -238,7 +177,7 @@ class Node2VecSpark(Node2VecBase):
         A driver class for the distributed Node2Vec algorithm for vertex embedding,
         read and write vectors and/or models.
 
-        :param df_walks: the 2-column dataframe of all random walk paths, [src, walk]
+        :param df_walks: Spark dataframe of all random walk paths, [src, walk]
         :param window_size: the context size for word2vec embedding
         :param vector_size: int, dimension of the output graph embedding representation
                             num of codes after transforming from words (dimension
@@ -253,10 +192,13 @@ class Node2VecSpark(Node2VecBase):
         self.walks = df_walks
         self.model: Optional[SparkW2VModel] = None
 
-        if w2v_params is None:
+        if w2v_params is not None:
+            tmp_param = WORD2VEC_PARAMS.copy()
+            tmp_param.update(w2v_params)
+            w2v_params = tmp_param
+        else:
             w2v_params = WORD2VEC_PARAMS
-        if w2v_params.get("seed", None) is None:
-            w2v_params["seed"] = random_seed or int(round(time.time() * 1000))
+        w2v_params["seed"] = random_seed if random_seed else int(time.time())
         if window_size is not None:
             if window_size < 5 or window_size > 40:
                 raise ValueError(f"Inappropriate context window size {window_size}!")
@@ -279,61 +221,28 @@ class Node2VecSpark(Node2VecBase):
         logging.info("model fitting done!")
         return self.model
 
-    def get_vector(self, vertex_name: Optional[Union[str, int]] = None) -> DataFrame:
+    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> DataFrame:
         """
-        :param vertex_name: the vertex name
+        :param vertex_id: the vertex name
         Return the vector associated with a node or all vectors
         """
-        if self.model is None:
-            self.fit()
-        if vertex_name is None:
+        if vertex_id is None:
             return self.model.getVectors()  # type: ignore
-        return self.model.getVectors().filter(f"word = {vertex_name}")  # type: ignore
-
-    def save_vectors(self, cloud_path: str, model_name: str,) -> None:
-        """
-        Save as graph embedding vectors as a Spark DataFrame
-        """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            self.word2vec.save(cloud_path + model_name)
-        except Exception as e:
-            raise ValueError("save_vectors(): failed with exception!") from e
-
-    def load_vectors(self, cloud_path: str, model_name: str,) -> DataFrame:
-        """
-        Load graph embedding vectors from saved file to a Spark DataFrame
-        """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            return SparkW2V.load(cloud_path + model_name)
-        except Exception as e:
-            raise ValueError("load_vectors(): failed with exception!") from e
+        return self.model.getVectors().filter(f"word = {vertex_id}")  # type: ignore
 
     def save_model(self, cloud_path: str, model_name: str,) -> None:
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
         """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            if not model_name.endswith(".model"):
-                model_name += ".model"
-            self.model.save(cloud_path + model_name)  # type: ignore
-        except Exception as e:
-            raise ValueError("save_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
     def load_model(self, cloud_path: str, model_name: str,) -> SparkW2VModel:
         """
         Load a previously saved Word2Vec model object to memory.
         """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            if not model_name.endswith(".model"):
-                model_name += ".model"
-            return SparkW2VModel.load(cloud_path + model_name)
-        except Exception as e:
-            raise ValueError("load_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model = SparkW2VModel.load(cloud_path + "/" + model_name)
+        return self.model

@@ -15,6 +15,10 @@ pip install node2vec-fugue
 
 ## Release History
 
+### 0.2.2
+* support word2vec on either gensim or spark.ml.feature backend
+* fully tested
+
 ### 0.2.1
 * change the interface to support backend compute engine
 * use iterable to replace most pandas usage
