@@ -121,7 +121,7 @@ class Node2VecGensim(Node2VecBase):
         self.model = gensim.models.Word2Vec(sentences=all_walks, **self.w2v_params)
         return self.model
 
-    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> Any:
+    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> KeyedVectors:
         """
         Return vector associated with a node identified by the original node name/id
         """
@@ -226,8 +226,6 @@ class Node2VecSpark(Node2VecBase):
         :param vertex_id: the vertex name
         Return the vector associated with a node or all vectors
         """
-        if self.model is None:
-            self.fit()
         if vertex_id is None:
             return self.model.getVectors()  # type: ignore
         return self.model.getVectors().filter(f"word = {vertex_id}")  # type: ignore
@@ -236,25 +234,15 @@ class Node2VecSpark(Node2VecBase):
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
         """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            if not model_name.endswith(".model"):
-                model_name += ".model"
-            self.model.save(cloud_path + model_name)  # type: ignore
-        except Exception as e:
-            raise ValueError("save_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
     def load_model(self, cloud_path: str, model_name: str,) -> SparkW2VModel:
         """
         Load a previously saved Word2Vec model object to memory.
         """
-        try:
-            if not cloud_path.endswith("/"):
-                cloud_path += "/"
-            if not model_name.endswith(".model"):
-                model_name += ".model"
-            self.model = SparkW2VModel.load(cloud_path + model_name)
-            return self.model
-        except Exception as e:
-            raise ValueError("load_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model = SparkW2VModel.load(cloud_path + "/" + model_name)
+        return self.model
