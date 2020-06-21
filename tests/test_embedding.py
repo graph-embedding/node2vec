@@ -6,7 +6,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql import DataFrame
 from gensim.models import KeyedVectors
 from gensim.models import Word2Vec as GensimW2V
-from pyspark.ml.feature import Word2Vec as SparkW2V
 from pyspark.ml.feature import Word2VecModel as SparkW2VModel
 
 from node2vec.embedding import Node2VecBase

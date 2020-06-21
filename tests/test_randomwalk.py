@@ -1,16 +1,199 @@
 import random
+import pytest
+import numpy as np
 import pandas as pd
-from fugue import ArrayDataFrame
-from fugue import NativeExecutionEngine
-from fugue_spark import SparkDataFrame
-from fugue_spark import SparkExecutionEngine
-from pyspark.sql import SparkSession
-from pyspark.sql import Row
-from node2vec.utils import Neighbors
-from node2vec.utils import AliasProb
-from node2vec.utils import generate_alias_tables
+from typing import List
+from typing import Tuple
+
+from node2vec.randomwalk import Neighbors
+from node2vec.randomwalk import AliasProb
+from node2vec.randomwalk import RandomPath
+from node2vec.randomwalk import generate_alias_tables
 
 
+#
+def test_class_neighbors():
+    """
+    test class Neighbors
+    """
+    random.seed(20)
+    # tuple
+    idx, weight = [0, 1, 2], [1.0, 0.2, 1.4]
+    nb1 = Neighbors((idx, weight))
+    df = pd.DataFrame.from_dict({'dst': idx, 'weight': weight})
+    # str
+    code64 = u'gANdcQAoSwBLAUsCZV1xAShHP/AAAAAAAABHP8mZmZmZmZpHP/ZmZmZmZmZlhnECLg=='
+    nb2 = Neighbors(code64)
+    #
+    for nbs in [nb1, nb2]:
+        assert isinstance(nbs, Neighbors)
+        assert nbs.dst_id == idx
+        assert nbs.dst_wt == weight
+
+        assert list(nbs.items()) == [(0, 1.0), (1, 0.2), (2, 1.4)]
+        assert nbs.serialize() == code64
+        assert nbs.as_pandas().equals(df)
+
+    # pandas df
+    idx, weight = [1, 2, 3], [0.1, 1.2, 0.8]
+    nbs = Neighbors(pd.DataFrame.from_dict({'dst': idx, 'weight': weight}))
+    code64 = u'gANdcQAoSwFLAksDZV1xAShHP7mZmZmZmZpHP/MzMzMzMzNHP+mZmZmZmZplhnECLg=='
+    df = pd.DataFrame.from_dict({'dst': idx, 'weight': weight})
+    assert isinstance(nbs, Neighbors)
+    assert nbs.dst_id == idx
+    assert nbs.dst_wt == weight
+
+    assert list(nbs.items()) == [(1, 0.1), (2, 1.2), (3, 0.8)]
+    assert nbs.serialize() == code64
+    assert nbs.as_pandas().equals(df)
+
+
+#
+def test_class_aliasprob():
+    """
+    test class AliasProb
+    """
+    alias, probs = [1, 0], [0.6666666666666666, 1.0]
+    code64 = u'gANdcQAoSwFLAGVdcQEoRz/lVVVVVVVVRz/wAAAAAAAAZYZxAi4='
+    nbs = Neighbors(([11, 22], [1.0, 0.5]))
+    jq1 = AliasProb((alias, probs))
+    jq2 = AliasProb(pd.DataFrame.from_dict({'alias': alias, 'probs': probs}))
+    jq3 = AliasProb(code64)
+    #
+    for jq in [jq1, jq2, jq3]:
+        random.seed(20)
+        assert isinstance(jq, AliasProb)
+        assert jq.alias == alias
+        assert jq.probs == probs
+        assert jq.serialize() == code64
+
+        assert jq.draw_alias(nbs) == 22
+        assert jq.draw_alias(nbs, 10) == 22
+
+    #
+    alias, probs = [0, 0], [1.0, 0.5714285714285715]
+    code64 = u'gANdcQAoSwBLAGVdcQEoRz/wAAAAAAAARz/iSSSSSSSTZYZxAi4='
+    nbs = Neighbors(([122, 221], [0.2, 1.5]))
+    jq1 = AliasProb((alias, probs))
+    jq2 = AliasProb(pd.DataFrame.from_dict({'alias': alias, 'probs': probs}))
+    jq3 = AliasProb(code64)
+    #
+    for jq in [jq1, jq2, jq3]:
+        random.seed(20)
+        assert isinstance(jq, AliasProb)
+        assert jq.alias == alias
+        assert jq.probs == probs
+        assert jq.serialize() == code64
+
+        assert jq.draw_alias(nbs) == 122
+        assert jq.draw_alias(nbs, 10) == 221
+
+
+#
+@pytest.mark.parametrize(
+    "path,code,dst_nbs,dst_wt,alias,probs,result",
+    [
+        ([-1, 0], u'gANdcQAoSv////9LAGUu', [1, 3], [1.0, 0.5],
+         [1, 0], [0.6666666666666666, 1.0], [0, 3]),
+        ([2, 1], u'gANdcQAoSwJLAWUu', [0, 2], [0.5, 1.0],
+         [0, 0], [1.0, 0.5714285714285715], [2, 1, 0]),
+        ([0, 3], u'gANdcQAoSwBLA2Uu', [0], [0.8], [0], [1.0], [0, 3, 0]),
+    ],
+)
+def test_class_randompath(
+        path: List[int],
+        code: str,
+        dst_nbs: List[int],
+        dst_wt: List[float],
+        alias: List[int],
+        probs: List[float],
+        result: List[int],
+) -> None:
+    """
+    test class RandomPath
+    """
+    rp1 = RandomPath(path)
+    rp2 = RandomPath(code)
+    nb = Neighbors((dst_nbs, dst_wt))
+    ap = AliasProb((alias, probs))
+    for rp in [rp1, rp2]:
+        random.seed(20)
+        assert isinstance(rp, RandomPath)
+        assert rp.path == path
+        assert rp.last_edge == (path[-2], path[-1])
+        assert rp.serialize() == code
+        assert rp.__str__() == str(path)
+
+        assert rp.append(nb, ap).path == result
+
+
+#
+@pytest.mark.parametrize(
+    "nbs,result",
+    [
+        ([(1, 0.5), (1, 0.8), (3, 1.0)], ([2, 0, 1], [0.6521739, 1.0, 0.9565217])),
+        ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
+        ([(1, 0.2)], ([0], [1.0])),
+        ([(0, 1.0)], ([0], [1.0])),
+    ],
+)
+def test_generate_alias_tables(
+        nbs: List[Tuple[int, float]],
+        result: Tuple[List[int], List[float]],
+) -> None:
+    """
+    test util func generate_alias_tables()
+    """
+    from node2vec.randomwalk import generate_alias_tables
+
+    alias, probs = generate_alias_tables([w for _, w in nbs])
+    assert alias == result[0]
+    np.testing.assert_almost_equal(probs, result[1], decimal=7)
+
+
+@pytest.mark.parametrize(
+    "src_id,src_nbs,dst_nbs,param_p,param_q,result",
+    [
+        (0, ([1, 2, 3], [0.5, 0.8, 1.0]), ([0, 2], [0.5, 0.2]), 1.0, 1.0,
+         ([0, 0], [1.0, 0.5714285714285715])),
+        (1, ([0, 2], [0.5, 0.2]), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
+        (3, ([0], [1.0]), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
+    ],
+)
+def test_generate_edge_alias_tables(
+        src_id: int,
+        src_nbs: Tuple[List[int], List[float]],
+        dst_nbs: Tuple[List[int], List[float]],
+        param_p: float,
+        param_q: float,
+        result: Tuple[List[int], List[float]],
+) -> None:
+    """
+    test util func generate_edge_alias_tables()
+    """
+    from node2vec.randomwalk import generate_edge_alias_tables
+
+    # normal tests
+    alias, probs = generate_edge_alias_tables(
+        src_id, src_nbs, dst_nbs, param_p, param_q,
+    )
+    assert alias == result[0]
+    np.testing.assert_almost_equal(probs, result[1], decimal=7)
+
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 0)
+    pytest.raises(
+        ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 1.0, 0,
+    )
+
+    # exception tests
+    src_nbs1 = (src_nbs[0][:-1], src_nbs[1])
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs1, dst_nbs)
+    dst_nbs1 = (dst_nbs[0], dst_nbs[1][:-1])
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs1)
+
+
+#
+#
 #
 def test_calculate_vertex_attributes():
     """
@@ -168,28 +351,3 @@ def test_to_path():
         assert sorted(ans.keys()) == ['src', 'walk']
         assert ans['src'] == path[i][0]
         assert ans['walk'] == path[i]
-
-
-#
-def test_random_walk():
-    """
-    test random_walk()
-    """
-    from node2vec.randomwalk import random_walk
-
-    graph = [[0, 2, 0.41], [0, 4, 0.85], [1, 5, 0.91], [2, 5, 0.3], [3, 4, 0.36],
-             [3, 5, 0.3], [2, 0, 0.68], [4, 0, 0.1], [5, 1, 0.28], [5, 2, 0.88],
-             [4, 3, 0.37], [5, 3, 0.97]]
-    df = ArrayDataFrame(graph, schema="src:long,dst:long,weight:double")
-    n2v_params = {"num_walks": 2, "walk_length": 3, "return_param": 0.5}
-
-    res = random_walk(NativeExecutionEngine(), df, n2v_params)
-    assert res is not None
-    res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params)
-    assert res is not None
-
-    spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
-    r = Row("src", "dst", "weight")
-    df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
-    res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)
-    assert res is not None
