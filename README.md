@@ -15,6 +15,10 @@ pip install node2vec-fugue
 
 ## Release History
 
+### 0.2.3
+* Add graph indexer for arbitrary vertex names
+* Refactor layout
+
 ### 0.2.2
 * support word2vec on either gensim or spark.ml.feature backend
 * fully tested
@@ -26,8 +30,3 @@ pip install node2vec-fugue
 ### 0.2.0
 * support fugue based node2vec
 * not yet support input format validation and vertex indexing
-
-### 0.1.0
-* initial, fully tested release
-* support only pyspark based node2vec
-* support input format validation and vertex indexing
