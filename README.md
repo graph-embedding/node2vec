@@ -15,6 +15,9 @@ pip install node2vec-fugue
 
 ## Release History
 
+### 0.2.4
+* Use Apache-2.0 license
+
 ### 0.2.3
 * Add graph indexer for arbitrary vertex names
 * Refactor layout
