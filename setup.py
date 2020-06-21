@@ -14,7 +14,7 @@ setup(
     long_description=LONG_DESCRIPTION,
     url="http://github.com/fugue-project/node2vec",
     long_description_content_type="text/markdown",
-    license="MIT",
+    license="Apache-2.0",
     author="Jintao Zhang",
     author_email="jtzhang@gmail.com",
     packages=find_packages(),
