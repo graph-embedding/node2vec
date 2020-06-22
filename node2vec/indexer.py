@@ -26,7 +26,7 @@ def index_graph_pandas(df_graph: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFra
         .reset_index()
     )
     name_id = name_id.rename(columns={"src": "vertex_name", "index": "vertex_id"})
-    logging.info(f"Total number of vertices: {name_id.count()}")
+    logging.info(f"Num of indexed vertices: {name_id.count()}")
 
     s_id = name_id.rename(columns={"vertex_name": "src", "vertex_id": "src_id"}).copy()
     d_id = name_id.rename(columns={"vertex_name": "dst", "vertex_id": "dst_id"}).copy()
@@ -34,7 +34,7 @@ def index_graph_pandas(df_graph: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFra
     df_edge = df_edge[["src_id", "dst_id", "weight"]].rename(
         columns={"src_id": "src", "dst_id": "dst"}
     )
-    logging.info(f"size of indexed graph: {df_edge.count()}")
+    logging.info(f"Num of indexed edges: {df_edge.count()}")
     return name_id, df_edge
 
 
@@ -55,12 +55,12 @@ def index_graph_spark(df_graph: DataFrame) -> Tuple[DataFrame, DataFrame]:
     name_id = (
         df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1]))).toDF()
     ).cache()
-    logging.info(f"Total num of vertices: {name_id.count()}")
+    logging.info(f"Num of indexed vertices: {name_id.count()}")
 
     df = df_graph.withColumnRenamed("src", "src_n").withColumnRenamed("dst", "dst_n")
     src_id = name_id.withColumnRenamed("name", "src_n").withColumnRenamed("id", "src")
     dst_id = name_id.withColumnRenamed("name", "dst_n").withColumnRenamed("id", "dst")
     df_edge = df.join(src_id, on=["src_n"]).join(dst_id, on=["dst_n"])
-    df_edge = df_edge.select("src", "dst", "weight")
-    logging.info(f"size of indexed graph: {df_edge.count()}")
+    df_edge = df_edge.select("src", "dst", "weight").cache()
+    logging.info(f"Num of indexed edges: {df_edge.count()}")
     return name_id, df_edge
