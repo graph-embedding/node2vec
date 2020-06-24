@@ -2,16 +2,74 @@ import logging
 from typing import Dict
 from typing import Any
 from typing import Optional
+from typing import Tuple
 from fugue import FugueWorkflow
 from fugue import DataFrame as FugueDataFrame
 from fugue import ExecutionEngine as FugueExecutionEngine
+from fugue import PandasDataFrame
+from fugue_spark import SparkExecutionEngine
+from fugue_spark import SparkDataFrame
 
 from node2vec.constants import NODE2VEC_PARAMS
+from node2vec.indexer import index_graph_pandas
+from node2vec.indexer import index_graph_spark
+from node2vec.randomwalk import trim_hotspot_vertices
 from node2vec.randomwalk import calculate_vertex_attributes
 from node2vec.randomwalk import calculate_edge_attributes
 from node2vec.randomwalk import initiate_random_walk
 from node2vec.randomwalk import next_step_random_walk
 from node2vec.randomwalk import to_path
+
+
+#
+def trim_index(
+    compute_engine: FugueExecutionEngine,
+    df_graph: FugueDataFrame,
+    indexed: Optional[bool] = False,
+    max_out_deg: Optional[int] = 0,
+    random_seed: Optional[int] = None,
+) -> Tuple[FugueDataFrame, Optional[FugueDataFrame]]:
+    """
+    The very first steps to treat the input graph:
+    1) basic validation of the input graph format: at least have ["src", "dst"] cols,
+       it will be an unweighted graph if no "weight" col.
+    2) trim some edges to avoid super hotspot vertices: random sampling will be done
+       on all the edges of a vertex if the number of edges is greater than a threshold,
+       this is critical to reduce data skewness and save disk space
+    3) index the graph vertices by using sequential integers to represent vertices,
+       this is critical to save memory
+
+    :param compute_engine: an execution engine supported by Fugue
+    :param df_graph: the input graph data as general Fugue dataframe
+    :param indexed: if the input graph is using sequential integers to note vertices
+    :param max_out_deg: the threshold for trimming hotspot vertices, set it to <= 0
+                        to turn off trimming
+    :param random_seed: optional random seed, for testing only
+
+    Returns a validated, trimmed, and indexed graph
+    """
+    logging.info("random_walk(): start validating input graph ...")
+    if "src" not in df_graph.schema or "dst" not in df_graph.schema:
+        raise ValueError(f"Input graph NOT in the right format: {df_graph.schema}")
+
+    params = {"max_out_degree": max_out_deg, "random_seed": random_seed}
+    with FugueWorkflow(compute_engine) as dag:
+        df = (
+            dag.df(df_graph)
+            .partition(by=["src"])
+            .transform(trim_hotspot_vertices, schema="*", params=params,)
+            .compute()
+        )
+
+    name_id = None
+    if indexed is True:
+        return df, name_id
+    if isinstance(compute_engine, SparkExecutionEngine):
+        df, name_id = index_graph_spark(df_graph.native)  # type: ignore
+        return SparkDataFrame(df), name_id
+    else:
+        df, name_id = index_graph_pandas(df_graph.as_pandas())
+        return PandasDataFrame(df), name_id
 
 
 #
@@ -55,18 +113,18 @@ def random_walk(
             n2v_params[param] = NODE2VEC_PARAMS[param]
 
     with FugueWorkflow(compute_engine) as dag:
-        edge_list = dag.df(df_graph).persist()
+        # create workflow
+        df = dag.df(df_graph).persist()
         # process vertices
         df_vertex = (
-            edge_list.partition(by=["src"], presort="dst")
+            df.partition(by=["src"], presort="dst")
             .transform(calculate_vertex_attributes)
             .persist()
         )
-
         # process edges
         src = df_vertex[["id", "neighbors"]].rename(id="src", neighbors="src_neighbors")
         dst = df_vertex[["id", "neighbors"]].rename(id="dst", neighbors="dst_neighbors")
-        df_edge = edge_list.inner_join(src).inner_join(dst)
+        df_edge = df.inner_join(src).inner_join(dst)
         params = n2v_params.copy()
         params.pop("walk_length")
         df_edge = (
@@ -74,8 +132,7 @@ def random_walk(
             .transform(calculate_edge_attributes, params=params,)
             .persist()
         )
-
-        # the initial state of random walk
+        # conduct random walking
         walks = df_vertex.transform(
             initiate_random_walk, params=dict(num_walks=n2v_params["num_walks"]),
         ).persist()
@@ -86,7 +143,6 @@ def random_walk(
                 .persist()
             )
 
-        df_walks = walks.transform(to_path)
-        # df_walks.show(12, show_count=True)
+        df_walks = walks.transform(to_path).compute()
         logging.info("random_walk(): random walking done ...")
-        return df_walks.compute()
+        return df_walks

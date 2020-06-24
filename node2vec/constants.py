@@ -2,6 +2,10 @@ from typing import Dict
 from typing import Any
 
 
+# the default maximum out degrees of each vertex
+MAX_OUT_DEGREES: int = 100000
+
+
 # the default node2vec parameters
 NODE2VEC_PARAMS: Dict[str, Any] = {
     #  num of walks starting from each node on sampling random walks, [10, 30]

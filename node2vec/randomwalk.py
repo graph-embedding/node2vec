@@ -10,6 +10,8 @@ from typing import Dict
 from typing import Any
 from typing import Optional
 
+from node2vec.constants import MAX_OUT_DEGREES
+
 
 class Neighbors(object):
     def __init__(self, obj: Union[str, pd.DataFrame, Tuple[List[int], List[float]]]):
@@ -210,6 +212,28 @@ def generate_edge_alias_tables(
 #
 # ============================- transformer func ====================================
 #
+def trim_hotspot_vertices(
+    df: pd.DataFrame, max_out_degree: int = 0, random_seed: Optional[int] = None,
+) -> Iterable[Dict[str, Any]]:
+    """
+    This func is to do random sampling on the edges of vertices which have very large
+    number of out edges. A maximal threshold is provided and random sampling is applied.
+    By default the threshold is 100,000.
+
+    :param df: a pandas dataframe from a partition of the node dataframe
+    :param max_out_degree: the max out degree of each vertex to avoid hotspot
+    :param random_seed: the seed for random sampling, testing only
+
+    return a Iterable of dict, each of which is a row of the result df.
+    """
+    if max_out_degree <= 0:
+        max_out_degree = MAX_OUT_DEGREES
+    if len(df["dst"].tolist()) > max_out_degree:
+        df = df.sample(max_out_degree, random_state=random_seed)
+    for _, row in df.iterrows():
+        yield dict(row)
+
+
 # schema: id:long,neighbors:str,alias_prob:str
 def calculate_vertex_attributes(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     """

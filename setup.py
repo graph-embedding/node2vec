@@ -28,6 +28,7 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Natural Language :: English",
         "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3 :: Only",
     ],
     install_requires=["PyYAML", "future", "pathlib2", "six", "joblib"],
