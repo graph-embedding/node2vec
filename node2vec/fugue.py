@@ -61,15 +61,15 @@ def trim_index(
             .compute()
         )
 
-    name_id = None
-    if indexed is True:
-        return df, name_id
-    if isinstance(compute_engine, SparkExecutionEngine):
-        df, name_id = index_graph_spark(df_graph.native)  # type: ignore
-        return SparkDataFrame(df), name_id
-    else:
-        df, name_id = index_graph_pandas(df_graph.as_pandas())
-        return PandasDataFrame(df), name_id
+        name_id = None
+        if indexed is True:
+            return df, name_id
+        if isinstance(compute_engine, SparkExecutionEngine):
+            df, name_id = index_graph_spark(df.native)  # type: ignore
+            return SparkDataFrame(df), SparkDataFrame(name_id)
+        else:
+            df, name_id = index_graph_pandas(df.as_pandas())
+            return PandasDataFrame(df), PandasDataFrame(name_id)
 
 
 #
