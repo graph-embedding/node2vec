@@ -229,7 +229,10 @@ def trim_hotspot_vertices(
     if max_out_degree <= 0:
         max_out_degree = MAX_OUT_DEGREES
     if len(df["dst"].tolist()) > max_out_degree:
-        df = df.sample(max_out_degree, random_state=random_seed)
+        if random_seed is not None:
+            df = df.sample(n=max_out_degree, random_state=random_seed)
+        else:
+            df = df.sample(n=max_out_degree)
     for _, row in df.iterrows():
         yield dict(row)
 

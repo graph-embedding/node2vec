@@ -29,22 +29,26 @@ def test_trim_index():
 
     spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
     dat1 = {
-        'src': ['a1', 'a2', 'a3', 'a4'], 'dst': ['a2', 'b1', 'b2', 'a1'],
+        'src': ['a1', 'a1', 'a1', 'a2', 'b2'], 'dst': ['a2', 'b1', 'b2', 'b1', 'a2'],
     }
     dat2 = {
         'dst': ['a2', 'b1', 'b2', 'a1'], 'weight': [0.8, 1.1, 1.0, 0.3]
     }
     df = spark.createDataFrame(pd.DataFrame.from_dict(dat1))
-    res = trim_index(SparkExecutionEngine(spark), SparkDataFrame(df), indexed=False)
-    assert res is not None
+    df_res, name_id = trim_index(
+        SparkExecutionEngine(spark), SparkDataFrame(df), indexed=False, max_out_deg=2
+    )
+    assert df_res.count() == 4 and name_id.count() == 4
     df = spark.createDataFrame(pd.DataFrame.from_dict(dat2))
     pytest.raises(
         ValueError, trim_index, SparkExecutionEngine(spark), SparkDataFrame(df), True,
     )
 
     df = pd.DataFrame.from_dict(dat1)
-    res = trim_index(NativeExecutionEngine(), PandasDataFrame(df), indexed=False)
-    assert res is not None
+    df_res, name_id = trim_index(
+        NativeExecutionEngine(), PandasDataFrame(df), indexed=False,
+    )
+    assert len(df_res.as_pandas()) == 5 and len(name_id.as_pandas()) == 4
     df = pd.DataFrame.from_dict(dat2)
     pytest.raises(
         ValueError, trim_index, NativeExecutionEngine(), PandasDataFrame(df), False,
