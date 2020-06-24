@@ -1,4 +1,5 @@
 import random
+import json
 import pytest
 import numpy as np
 import pandas as pd
@@ -194,6 +195,39 @@ def test_generate_edge_alias_tables(
 
 #
 #
+def test_trim_hotspot_vertices():
+    """
+    test trim_hotspot_vertices()
+    """
+    from node2vec.randomwalk import trim_hotspot_vertices
+
+    random.seed(20)
+    src, dst, weight = [3, 3, 3], [0, 1, 2], [1.0, 0.2, 1.4]
+    df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'weight': weight})
+    res = trim_hotspot_vertices(df)
+    src_, dst_, weight_ = [], [], []
+    for row in res:
+        src_.append(row["src"])
+        dst_.append(row["dst"])
+        weight_.append(row["weight"])
+    assert src_ == src
+    assert dst_ == dst
+    assert weight_ == weight
+
+    max_deg = 2
+    res = trim_hotspot_vertices(df, max_out_degree=max_deg, random_seed=20)
+    ground = set()
+    for i in range(len(src)):
+        ground.add(json.dumps({"src": src[i], "dst": dst[i], "weight": weight[i]}))
+    n = 0
+    for row in res:
+        n += 1
+        row["src"], row["dst"] = int(row["src"]), int(row["dst"])
+        line = json.dumps(row)
+        assert line in ground
+    assert n == max_deg
+
+
 #
 def test_calculate_vertex_attributes():
     """

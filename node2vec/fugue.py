@@ -6,7 +6,7 @@ from typing import Tuple
 from fugue import FugueWorkflow
 from fugue import DataFrame as FugueDataFrame
 from fugue import ExecutionEngine as FugueExecutionEngine
-from fugue import ArrayDataFrame
+from fugue import PandasDataFrame
 from fugue_spark import SparkExecutionEngine
 from fugue_spark import SparkDataFrame
 
@@ -49,17 +49,14 @@ def trim_index(
     Returns a validated, trimmed, and indexed graph
     """
     logging.info("random_walk(): start validating input graph ...")
-    if isinstance(compute_engine, SparkExecutionEngine):
-        df = SparkDataFrame(df_graph).native
-    else:
-        df = ArrayDataFrame(df_graph).as_pandas()
-    if "src" not in df.columns or "dst" not in df.columns:
-        raise ValueError(f"Input graph NOT in the right format: {df.columns}")
+    if "src" not in df_graph.schema or "dst" not in df_graph.schema:
+        raise ValueError(f"Input graph NOT in the right format: {df_graph.schema}")
 
     params = {"max_out_degree": max_out_deg, "random_seed": random_seed}
     with FugueWorkflow(compute_engine) as dag:
         df = (
             dag.df(df_graph)
+            .partition(by=["src"])
             .transform(trim_hotspot_vertices, schema="*", params=params,)
             .compute()
         )
@@ -68,11 +65,11 @@ def trim_index(
     if indexed is True:
         return df, name_id
     if isinstance(compute_engine, SparkExecutionEngine):
-        df, name_id = index_graph_spark(SparkDataFrame(df_graph).native)
-        return ArrayDataFrame(df), name_id
-    else:
-        df, name_id = index_graph_pandas(ArrayDataFrame(df_graph).as_pandas())
+        df, name_id = index_graph_spark(df_graph.native)  # type: ignore
         return SparkDataFrame(df), name_id
+    else:
+        df, name_id = index_graph_pandas(df_graph.as_pandas())
+        return PandasDataFrame(df), name_id
 
 
 #
