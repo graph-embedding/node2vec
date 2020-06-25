@@ -18,7 +18,7 @@ def test_trim_index():
 
     graph = [[0, 2, 0.41], [0, 4, 0.85], [3, 4, 0.36], [2, 0, 0.68], [4, 0, 0.1],
              [4, 3, 0.37]]
-    df = ArrayDataFrame(graph, schema="src:long,dst:long,weight:double")
+    df = ArrayDataFrame(graph, schema="src:int,dst:int,weight:double")
 
     df_res, name_id = trim_index(NativeExecutionEngine(), df, indexed=True)
     assert len(df_res.as_pandas()) == 6 and name_id is None
@@ -64,7 +64,7 @@ def test_random_walk():
 
     graph = [[0, 2, 0.41], [0, 4, 0.85], [3, 4, 0.36], [2, 0, 0.68], [4, 0, 0.1],
              [4, 3, 0.37]]
-    df = ArrayDataFrame(graph, schema="src:long,dst:long,weight:double")
+    df = ArrayDataFrame(graph, schema="src:int,dst:int,weight:double")
     n2v_params = {"num_walks": 2, "walk_length": 3, "return_param": 0.5}
 
     res = random_walk(NativeExecutionEngine(), df, n2v_params)

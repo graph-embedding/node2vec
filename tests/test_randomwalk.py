@@ -9,7 +9,6 @@ from typing import Tuple
 from node2vec.randomwalk import Neighbors
 from node2vec.randomwalk import AliasProb
 from node2vec.randomwalk import RandomPath
-from node2vec.randomwalk import generate_alias_tables
 
 
 #
@@ -153,17 +152,16 @@ def test_generate_alias_tables(
 
 
 @pytest.mark.parametrize(
-    "src_id,src_nbs,dst_nbs,param_p,param_q,result",
+    "src_id,shd_ids,dst_nbs,param_p,param_q,result",
     [
-        (0, ([1, 2, 3], [0.5, 0.8, 1.0]), ([0, 2], [0.5, 0.2]), 1.0, 1.0,
-         ([0, 0], [1.0, 0.5714285714285715])),
-        (1, ([0, 2], [0.5, 0.2]), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
-        (3, ([0], [1.0]), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
+        (0, [2], ([0, 2], [0.5, 0.2]), 1.0, 1.0, ([0, 0], [1.0, 0.5714285714285715])),
+        (1, ([]), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
+        (3, ([]), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
         src_id: int,
-        src_nbs: Tuple[List[int], List[float]],
+        shd_ids: List[int],
         dst_nbs: Tuple[List[int], List[float]],
         param_p: float,
         param_q: float,
@@ -176,21 +174,18 @@ def test_generate_edge_alias_tables(
 
     # normal tests
     alias, probs = generate_edge_alias_tables(
-        src_id, src_nbs, dst_nbs, param_p, param_q,
+        src_id, shd_ids, dst_nbs, param_p, param_q,
     )
     assert alias == result[0]
     np.testing.assert_almost_equal(probs, result[1], decimal=7)
 
-    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 0)
-    pytest.raises(
-        ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs, 1.0, 0,
-    )
-
     # exception tests
-    src_nbs1 = (src_nbs[0][:-1], src_nbs[1])
-    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs1, dst_nbs)
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, shd_ids, dst_nbs, 0)
+    pytest.raises(
+        ValueError, generate_edge_alias_tables, src_id, shd_ids, dst_nbs, 1.0, 0,
+    )
     dst_nbs1 = (dst_nbs[0], dst_nbs[1][:-1])
-    pytest.raises(ValueError, generate_edge_alias_tables, src_id, src_nbs, dst_nbs1)
+    pytest.raises(ValueError, generate_edge_alias_tables, src_id, shd_ids, dst_nbs1)
 
 
 #
@@ -239,13 +234,11 @@ def test_calculate_vertex_attributes():
     src, dst, weight = [3, 3, 3], [0, 1, 2], [1.0, 0.2, 1.4]
     df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'weight': weight})
     code64 = u'gANdcQAoSwBLAUsCZV1xAShHP/AAAAAAAABHP8mZmZmZmZpHP/ZmZmZmZmZlhnECLg=='
-    ap64 = u'gANdcQAoSwBLAksAZV1xAShHP/AAAAAAAABHP82J2J2J2J9HP+sTsTsTsTxlhnECLg=='
 
     res = next(iter(calculate_vertex_attributes(df)))
-    assert sorted(res.keys()) == ['alias_prob', 'id', 'neighbors']
+    assert sorted(res.keys()) == ['id', 'neighbors']
     assert res['id'] == src[0]
     assert res['neighbors'] == code64
-    assert res['alias_prob'] == ap64
 
 
 #
@@ -258,39 +251,24 @@ def test_calculate_edge_attributes():
     random.seed(20)
     src, dst = [0, 0], [1, 2]
     src_nbs = Neighbors(([1, 2, 3], [0.5, 1.2, 0.7]))
-    src_neighbors = [src_nbs.serialize(), src_nbs.serialize()]
-    dst_neighbors = [
-        Neighbors(([0, 2, 4], [0.5, 0.9, 1.0])).serialize(),
-        Neighbors(([0, 1], [1.2, 0.9])).serialize(),
-    ]
-    # df = pd.DataFrame.from_dict({
-    #     'src': src, 'dst': dst,
-    #     'src_neighbors': src_neighbors,
-    #     'dst_neighbors': dst_neighbors
-    # })
-    df = [{'src': src[i], 'dst': dst[i], 'src_neighbors': src_neighbors[i],
-           'dst_neighbors': dst_neighbors[i]} for i in range(len(src))]
-    code64 = u'gANdcQAoSwFLAksDZV1xAShHP+AAAAAAAABHP/MzMzMzMzNHP+ZmZmZmZmZlhnECLg=='
-    ap64 = u'gANdcQAoSwFLAEsBZV1xAShHP+QAAAAAAABHP/AAAAAAAABHP+wAAAAAAABlhnECLg=='
+    dst_nbs = [Neighbors(([0, 2, 4], [0.5, 0.9, 1.0])), Neighbors(([0, 1], [1.2, 0.9]))]
+    df = [{'src': src[i], 'dst': dst[i], 'src_neighbors': src_nbs.serialize(),
+           'dst_neighbors': dst_nbs[i].serialize()} for i in range(len(src))]
 
     num_walks = 2
-    res = iter(calculate_edge_attributes(df, num_walks, 1.0, 1.0))
+    res = iter(calculate_edge_attributes(df, num_walks))
     for i in range(1, num_walks + 1):
         ans = next(res)
-        assert sorted(ans.keys()) == ['alias_prob', 'dst', 'dst_neighbors', 'src']
+        assert sorted(ans.keys()) == ['dst', 'shared_nbs_ids', 'src']
         assert ans['src'] == -i and ans['dst'] == 0
-        assert ans['dst_neighbors'] == code64
-        assert ans['alias_prob'] == ap64
+        assert ans['shared_nbs_ids'] == []
 
-    ap64 = [u'gANdcQAoSwJLAEsBZV1xAShHP+QAAAAAAABHP/AAAAAAAABHP+wAAAAAAABlhnECLg==',
-            u'gANdcQAoSwBLAGVdcQEoRz/wAAAAAAAARz/rbbbbbbbbZYZxAi4='
-            ]
     for i in range(len(df)):
         ans = next(res)
-        assert sorted(ans.keys()) == ['alias_prob', 'dst', 'dst_neighbors', 'src']
+        shd_ids = [x for x in dst_nbs[i].dst_id if x in src_nbs.dst_id]
+        assert sorted(ans.keys()) == ['dst', 'shared_nbs_ids', 'src']
         assert ans['src'] == 0 and ans['dst'] == dst[i]
-        assert ans['dst_neighbors'] == dst_neighbors[i]
-        assert ans['alias_prob'] == ap64[i]
+        assert ans['shared_nbs_ids'] == shd_ids
 
 
 def test_initiate_random_walk():
@@ -331,23 +309,12 @@ def test_next_step_random_walk():
         Neighbors(([0, 3], [1.2, 0.9])).serialize(),
         Neighbors(([0, 3], [1.2, 0.9])).serialize(),
     ]
-    alias_prob = [
-        AliasProb(generate_alias_tables([0.5, 0.9, 1.0])).serialize(),
-        AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
-        AliasProb(generate_alias_tables([1.2, 0.9])).serialize(),
-    ]
-    # df = pd.DataFrame.from_dict({
-    #     'src': src,
-    #     'dst': dst,
-    #     'path': path,
-    #     'dst_neighbors': dst_neighbors,
-    #     'alias_prob': alias_prob,
-    # })
+    shared_ids = [[2], [], []]
     df = [{"src": src[i], "dst": dst[i], "path": path[i],
-           "dst_neighbors": dst_neighbors[i], "alias_prob": alias_prob[i]}
-          for i in range(len(src))]
+           "dst_neighbors": dst_neighbors[i],
+           "shared_nbs_ids": shared_ids[i]} for i in range(len(src))]
 
-    res = iter(next_step_random_walk(df))
+    res = iter(next_step_random_walk(df, 1.0, 1.0))
     ans = next(res)
     assert sorted(ans.keys()) == ['dst', 'path', 'src']
     assert ans['src'] == 1

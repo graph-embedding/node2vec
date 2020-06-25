@@ -15,6 +15,9 @@ pip install node2vec-fugue
 
 ## Release History
 
+### 0.2.7
+* Significant improvement on handling hotspot vertices
+
 ### 0.2.5
 * Add indexer of graph vertices
 * Allow trimming hotspot vertices
