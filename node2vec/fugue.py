@@ -48,7 +48,7 @@ def trim_index(
 
     Returns a validated, trimmed, and indexed graph
     """
-    logging.info("random_walk(): start validating input graph ...")
+    logging.info("trim_index(): start validating, trimming, and indexing ...")
     if "src" not in df_graph.schema or "dst" not in df_graph.schema:
         raise ValueError(f"Input graph NOT in the right format: {df_graph.schema}")
 
@@ -60,16 +60,15 @@ def trim_index(
             .transform(trim_hotspot_vertices, schema="*", params=params,)
             .compute()
         )
-
         name_id = None
         if indexed is True:
             return df, name_id
         if isinstance(compute_engine, SparkExecutionEngine):
-            df, name_id = index_graph_spark(df.native)  # type: ignore
-            return SparkDataFrame(df), SparkDataFrame(name_id)
+            df_res, name_id = index_graph_spark(df.native)  # type: ignore
+            return SparkDataFrame(df_res), SparkDataFrame(name_id)
         else:
-            df, name_id = index_graph_pandas(df.as_pandas())
-            return PandasDataFrame(df), PandasDataFrame(name_id)
+            df_res, name_id = index_graph_pandas(df.as_pandas())
+            return PandasDataFrame(df_res), PandasDataFrame(name_id)
 
 
 #
@@ -114,7 +113,7 @@ def random_walk(
 
     with FugueWorkflow(compute_engine) as dag:
         # create workflow
-        df = dag.df(df_graph).persist()
+        df = dag.df(df_graph)
         # process vertices
         df_vertex = (
             df.partition(by=["src"], presort="dst")
@@ -122,27 +121,31 @@ def random_walk(
             .persist()
         )
         # process edges
-        src = df_vertex[["id", "neighbors"]].rename(id="src", neighbors="src_neighbors")
-        dst = df_vertex[["id", "neighbors"]].rename(id="dst", neighbors="dst_neighbors")
-        df_edge = df.inner_join(src).inner_join(dst)
-        params = n2v_params.copy()
-        params.pop("walk_length")
+        df_src = df_vertex.rename(id="src", neighbors="src_neighbors")
+        df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors")
+        df_edge = df.inner_join(df_src).inner_join(df_dst)
         df_edge = (
             df_edge.partition(by=["src"])
-            .transform(calculate_edge_attributes, params=params,)
+            .transform(
+                calculate_edge_attributes,
+                params=dict(num_walks=n2v_params["num_walks"]),
+            )
             .persist()
         )
         # conduct random walking
         walks = df_vertex.transform(
             initiate_random_walk, params=dict(num_walks=n2v_params["num_walks"]),
         ).persist()
+        params = {"seed": random_seed}
+        for k in ["return_param", "inout_param"]:
+            params[k] = n2v_params[k]
         for _ in range(n2v_params["walk_length"]):
             walks = (
-                walks.inner_join(df_edge)
-                .transform(next_step_random_walk, params=dict(seed=random_seed),)
+                walks.inner_join(df_dst)
+                .inner_join(df_edge)
+                .transform(next_step_random_walk, params=params,)
                 .persist()
             )
-
         df_walks = walks.transform(to_path).compute()
         logging.info("random_walk(): random walking done ...")
         return df_walks
