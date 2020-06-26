@@ -208,50 +208,6 @@ def generate_edge_alias_tables(
     return generate_alias_tables(neighbors_dst)
 
 
-# def generate_edge_alias_tables1(
-#     src_id: int,
-#     src_neighbors: Tuple[List[int], List[float]],
-#     dst_neighbors: Tuple[List[int], List[float]],
-#     return_param: float = 1.0,
-#     inout_param: float = 1.0,
-# ) -> Tuple[List[int], List[float]]:
-#     """
-#     Apply the biased sampling on edge weight described in the node2vec paper. Each
-#     entry here represents an edge, and the src and dst node's info.
-#
-#     :param src_id: the source node id
-#     :param src_neighbors: the list of source node's neighbor node id's and weights
-#     :param dst_neighbors: the list of destination node's neighbor id's and weights
-#     :param return_param: the parameter p defined in the paper
-#     :param inout_param: the parameter q defined in the paper
-#
-#     return the utility tables of the Alias method, after weights are biased.
-#     """
-#     for nbs in [src_neighbors, dst_neighbors]:
-#         if len(nbs) != 2 or len(nbs[0]) != len(nbs[1]):
-#             raise ValueError(f"Invalid neighbors tuple '{nbs}'!")
-#     if return_param == 0 or inout_param == 0:
-#         raise ValueError(
-#             f"Zero return ({return_param}) or inout ({inout_param}) parameter!"
-#         )
-#     src_neighbor_ids = set(src_neighbors[0])
-#     # apply bias to edge weights
-#     neighbors_dst: List[float] = []
-#     for i in range(len(dst_neighbors[0])):
-#         dst_neighbor_id, weight = dst_neighbors[0][i], dst_neighbors[1][i]
-#         # go back to the src id
-#         if dst_neighbor_id == src_id:
-#             unnorm_prob = weight / return_param
-#         # go to a neighbor of src
-#         elif dst_neighbor_id in src_neighbor_ids:
-#             unnorm_prob = weight
-#         # go to a brand new vertex
-#         else:
-#             unnorm_prob = weight / inout_param
-#         neighbors_dst.append(unnorm_prob)
-#     return generate_alias_tables(neighbors_dst)
-
-
 #
 # ============================- transformer func ====================================
 #
@@ -315,47 +271,6 @@ def calculate_edge_attributes(
         yield dict(src=row["src"], dst=row["dst"], shared_nbs_ids=shared_ids)
 
 
-# # schema: src:int,dst:int,dst_neighbors:str,alias_prob:str
-# def calculate_edge_attributes(
-#     df: Iterable[Dict[str, Any]],
-#     num_walks: int,
-#     return_param: float,
-#     inout_param: float,
-# ) -> Iterable[Dict[str, Any]]:
-#     """
-#     func for running mapPartitions to initiate attributes for every edge in the graph
-#
-#     :param df:
-#     :param num_walks:
-#     :param return_param:
-#     :param inout_param:
-#
-#     """
-#     is_first = True
-#     for row in df:
-#         src, src_nbs_str = row["src"], row["src_neighbors"]
-#         src_nbs = Neighbors(src_nbs_str)
-#         src_nbs_data = (src_nbs.dst_id, src_nbs.dst_wt)
-#         if is_first is True:
-#             apstr = AliasProb(generate_alias_tables(src_nbs.dst_wt)).serialize()
-#             for i in range(1, num_walks + 1):
-#                 yield dict(
-#                 src=-i, dst=src, dst_neighbors=src_nbs_str, alias_prob=apstr
-#                 )
-#             is_first = False
-#
-#         dst_nbs_str = row["dst_neighbors"]
-#         dst_nbs = Neighbors(dst_nbs_str)
-#         dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
-#         alias_prob = generate_edge_alias_tables(
-#             src, src_nbs_data, dst_nbs_data, return_param, inout_param,
-#         )
-#         apstr = AliasProb(alias_prob).serialize()
-#         yield dict(
-#         src=src, dst=row["dst"], dst_neighbors=dst_nbs_str, alias_prob=apstr
-#         )
-
-
 # schema: src:int,dst:int,path:[int]
 def initiate_random_walk(
     df: Iterable[Dict[str, Any]], num_walks: int,
@@ -406,30 +321,6 @@ def next_step_random_walk(
         path = RandomPath(row["path"])
         _p = path.append(dst_nbs, alias_prob, seed)
         yield dict(src=_p.last_edge[0], dst=_p.last_edge[1], path=_p.path)
-
-
-# # schema: src:int,dst:int,path:[int]
-# def next_step_random_walk(
-#     df: Iterable[Dict[str, Any]],
-#     nbs_col: str = "dst_neighbors",
-#     seed: Optional[int] = None,
-# ) -> Iterable[Dict[str, Any]]:
-#     """
-#     Extend the random walk path by one more step
-#
-#     :param df: the partition of the vertex (random path) dataframe
-#     :param nbs_col: the name of the dst neighbor col
-#     :param seed: optional random seed, for testing only
-#     """
-#     for row in df:
-#         if row[nbs_col] is not None:
-#             nbs = Neighbors(row[nbs_col])
-#             alias_prob = AliasProb(row["alias_prob"])
-#             path = RandomPath(row["path"])
-#             _p = path.append(nbs, alias_prob, seed)
-#
-#             row = {"src": _p.last_edge[0], "dst": _p.last_edge[1], "path": _p.path}
-#         yield row
 
 
 # schema: src:int,walk:[int]
