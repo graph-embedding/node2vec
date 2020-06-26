@@ -111,41 +111,41 @@ def random_walk(
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
 
-    with FugueWorkflow(compute_engine) as dag:
-        # create workflow
-        df = dag.df(df_graph)
-        # process vertices
-        df_vertex = (
-            df.partition(by=["src"], presort="dst")
-            .transform(calculate_vertex_attributes)
+    # create workflow
+    dag = FugueWorkflow(compute_engine)
+    df = dag.df(df_graph)
+    # process vertices
+    df_vertex = (
+        df.partition(by=["src"], presort="dst")
+        .transform(calculate_vertex_attributes)
+        .persist()
+    )
+    # process edges
+    df_src = df_vertex.rename(id="src", neighbors="src_neighbors")
+    df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors")
+    df_edge = df.inner_join(df_src).inner_join(df_dst)
+    params = {"num_walks": n2v_params["num_walks"]}
+    df_edge = (
+        df_edge.partition(by=["src"])
+        .transform(calculate_edge_attributes, params=params,)
+        .persist()
+    )
+    # conduct random walking
+    walks = df_vertex.transform(initiate_random_walk, params=params).persist()
+    params = {
+        "return_param": n2v_params["return_param"],
+        "inout_param": n2v_params["inout_param"],
+        "seed": random_seed,
+    }
+    # distributed bfs
+    for _ in range(n2v_params["walk_length"]):
+        walks = (
+            walks.inner_join(df_dst)
+            .inner_join(df_edge)
+            .transform(next_step_random_walk, params=params,)
             .persist()
         )
-        # process edges
-        df_src = df_vertex.rename(id="src", neighbors="src_neighbors")
-        df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors")
-        df_edge = df.inner_join(df_src).inner_join(df_dst)
-        df_edge = (
-            df_edge.partition(by=["src"])
-            .transform(
-                calculate_edge_attributes,
-                params=dict(num_walks=n2v_params["num_walks"]),
-            )
-            .persist()
-        )
-        # conduct random walking
-        walks = df_vertex.transform(
-            initiate_random_walk, params=dict(num_walks=n2v_params["num_walks"]),
-        ).persist()
-        params = {"seed": random_seed}
-        for k in ["return_param", "inout_param"]:
-            params[k] = n2v_params[k]
-        for _ in range(n2v_params["walk_length"]):
-            walks = (
-                walks.inner_join(df_dst)
-                .inner_join(df_edge)
-                .transform(next_step_random_walk, params=params,)
-                .persist()
-            )
-        df_walks = walks.transform(to_path).compute()
-        logging.info("random_walk(): random walking done ...")
-        return df_walks
+    # convert paths back to lists
+    df_walks = walks.transform(to_path).persist()
+    logging.info("random_walk(): random walking done ...")
+    return df_walks.compute()
