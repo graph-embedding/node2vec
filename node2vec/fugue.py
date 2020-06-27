@@ -14,8 +14,8 @@ from node2vec.constants import NODE2VEC_PARAMS
 from node2vec.indexer import index_graph_pandas
 from node2vec.indexer import index_graph_spark
 from node2vec.randomwalk import trim_hotspot_vertices
-from node2vec.randomwalk import calculate_vertex_attributes
-from node2vec.randomwalk import calculate_edge_attributes
+from node2vec.randomwalk import get_vertex_neighbors
+from node2vec.randomwalk import get_edge_shared_neighbors
 from node2vec.randomwalk import initiate_random_walk
 from node2vec.randomwalk import next_step_random_walk
 from node2vec.randomwalk import to_path
@@ -110,41 +110,39 @@ def random_walk(
     for param in NODE2VEC_PARAMS:
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
-
     # create workflow
-    dag = FugueWorkflow(compute_engine)
-    df = dag.df(df_graph)
+    df = FugueWorkflow(compute_engine).df(df_graph)
     # process vertices
     df_vertex = (
         df.partition(by=["src"], presort="dst")
-        .transform(calculate_vertex_attributes)
+        .transform(get_vertex_neighbors)
         .persist()
     )
     # process edges
-    df_src = df_vertex.rename(id="src", neighbors="src_neighbors")
     df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors")
-    df_edge = df.inner_join(df_src).inner_join(df_dst)
-    params = {"num_walks": n2v_params["num_walks"]}
+    param1 = {"num_walks": n2v_params["num_walks"]}
     df_edge = (
-        df_edge.partition(by=["src"])
-        .transform(calculate_edge_attributes, params=params,)
+        df[["src", "dst"]]
+        .inner_join(df_dst)
+        .partition(by=["src"])
+        .transform(get_edge_shared_neighbors, params=param1,)
         .persist()
     )
-    # conduct random walking
-    walks = df_vertex.transform(initiate_random_walk, params=params).persist()
-    params = {
+    # conduct random walk with distributed bfs
+    walks = df_vertex.transform(initiate_random_walk, params=param1).persist()
+    param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
         "seed": random_seed,
     }
-    # distributed bfs
-    for _ in range(n2v_params["walk_length"]):
+    for i in range(n2v_params["walk_length"]):
         walks = (
             walks.inner_join(df_dst)
             .inner_join(df_edge)
-            .transform(next_step_random_walk, params=params,)
-            .persist()
+            .transform(next_step_random_walk, params=param2,)
         )
+        if i % 2 == 1:
+            walks = walks.persist()
     # convert paths back to lists
     df_walks = walks.transform(to_path).persist()
     logging.info("random_walk(): random walking done ...")

@@ -224,51 +224,54 @@ def test_trim_hotspot_vertices():
 
 
 #
-def test_calculate_vertex_attributes():
+def test_get_vertex_neighbors():
     """
     test calculate_vertex_attributes()
     """
-    from node2vec.randomwalk import calculate_vertex_attributes
+    from node2vec.randomwalk import get_vertex_neighbors
 
     random.seed(20)
     src, dst, weight = [3, 3, 3], [0, 1, 2], [1.0, 0.2, 1.4]
     df = pd.DataFrame.from_dict({'src': src, 'dst': dst, 'weight': weight})
     code64 = u'gANdcQAoSwBLAUsCZV1xAShHP/AAAAAAAABHP8mZmZmZmZpHP/ZmZmZmZmZlhnECLg=='
 
-    res = next(iter(calculate_vertex_attributes(df)))
+    res = next(iter(get_vertex_neighbors(df)))
     assert sorted(res.keys()) == ['id', 'neighbors']
     assert res['id'] == src[0]
     assert res['neighbors'] == code64
 
 
 #
-def test_calculate_edge_attributes():
+def test_get_edge_shared_neighbors():
     """
     test calculate_edge_attributes()
     """
-    from node2vec.randomwalk import calculate_edge_attributes
+    from node2vec.randomwalk import get_edge_shared_neighbors
 
     random.seed(20)
-    src, dst = [0, 0], [1, 2]
-    src_nbs = Neighbors(([1, 2, 3], [0.5, 1.2, 0.7]))
-    dst_nbs = [Neighbors(([0, 2, 4], [0.5, 0.9, 1.0])), Neighbors(([0, 1], [1.2, 0.9]))]
-    df = [{'src': src[i], 'dst': dst[i], 'src_neighbors': src_nbs.serialize(),
-           'dst_neighbors': dst_nbs[i].serialize()} for i in range(len(src))]
+    src, dst = [0, 0, 0], [1, 2, 3]
+    dst_nbs = [Neighbors(([0, 2, 4], [0.5, 0.7, 1.0])),
+               Neighbors(([0, 1, 3], [1.2, 0.7, 1.5])),
+               Neighbors(([0, 2], [0.9, 1.5])),
+               ]
+    df = pd.DataFrame.from_dict(
+        {'src': src, 'dst': dst, 'dst_neighbors': [nb.serialize() for nb in dst_nbs]}
+    )
 
     num_walks = 2
-    res = iter(calculate_edge_attributes(df, num_walks))
+    res = iter(get_edge_shared_neighbors(df, num_walks))
     for i in range(1, num_walks + 1):
         ans = next(res)
-        assert sorted(ans.keys()) == ['dst', 'shared_nbs_ids', 'src']
+        assert sorted(ans.keys()) == ['dst', 'shared_neighbor_ids', 'src']
         assert ans['src'] == -i and ans['dst'] == 0
-        assert ans['shared_nbs_ids'] == []
+        assert ans['shared_neighbor_ids'] == []
 
     for i in range(len(df)):
         ans = next(res)
-        shd_ids = [x for x in dst_nbs[i].dst_id if x in src_nbs.dst_id]
-        assert sorted(ans.keys()) == ['dst', 'shared_nbs_ids', 'src']
+        shd_ids = [x for x in dst_nbs[i].dst_id if x in dst]
+        assert sorted(ans.keys()) == ['dst', 'shared_neighbor_ids', 'src']
         assert ans['src'] == 0 and ans['dst'] == dst[i]
-        assert ans['shared_nbs_ids'] == shd_ids
+        assert ans['shared_neighbor_ids'] == shd_ids
 
 
 def test_initiate_random_walk():
@@ -312,7 +315,7 @@ def test_next_step_random_walk():
     shared_ids = [[2], [], []]
     df = [{"src": src[i], "dst": dst[i], "path": path[i],
            "dst_neighbors": dst_neighbors[i],
-           "shared_nbs_ids": shared_ids[i]} for i in range(len(src))]
+           "shared_neighbor_ids": shared_ids[i]} for i in range(len(src))]
 
     res = iter(next_step_random_walk(df, 1.0, 1.0))
     ans = next(res)

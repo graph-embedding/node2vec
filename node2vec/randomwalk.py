@@ -167,7 +167,7 @@ def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[f
 
 def generate_edge_alias_tables(
     src_id: int,
-    shared_nbs_ids: List[int],
+    shared_neighbor_ids: List[int],
     dst_neighbors: Tuple[List[int], List[float]],
     return_param: float = 1.0,
     inout_param: float = 1.0,
@@ -177,7 +177,7 @@ def generate_edge_alias_tables(
     here represents an edge, and the src and dst node's info.
 
     :param src_id: the source node id
-    :param shared_nbs_ids: the intersection of src neighbor id's and dst neighbor id's
+    :param shared_neighbor_ids: the intersection of src neighbor and dst neighbor id's
     :param dst_neighbors: the list of destination node's neighbor node id's and weights
     :param return_param: the parameter p defined in the paper
     :param inout_param: the parameter q defined in the paper
@@ -191,7 +191,7 @@ def generate_edge_alias_tables(
             f"Zero return ({return_param}) or inout ({inout_param}) parameter!"
         )
     # apply bias to edge weights
-    shared_neighbor_ids = set(shared_nbs_ids)
+    shared_nb_ids = set(shared_neighbor_ids)
     neighbors_dst: List[float] = []
     for i in range(len(dst_neighbors[0])):
         dst_neighbor_id, weight = dst_neighbors[0][i], dst_neighbors[1][i]
@@ -199,7 +199,7 @@ def generate_edge_alias_tables(
         if dst_neighbor_id == src_id:
             unnorm_prob = weight / return_param
         # go to a neighbor of src
-        elif dst_neighbor_id in shared_neighbor_ids:
+        elif dst_neighbor_id in shared_nb_ids:
             unnorm_prob = weight
         # go to a brand new vertex
         else:
@@ -237,9 +237,9 @@ def trim_hotspot_vertices(
 
 
 # schema: id:int,neighbors:str
-def calculate_vertex_attributes(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
+def get_vertex_neighbors(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     """
-    A func to aggregate all neighbors and their weights for every node in the graph
+    Aggregate all neighbors and their weights for every vertex in the graph
 
     :param df: a pandas dataframe from a partition of the node dataframe
     return a Iterable of dict, each of which is a row of the result df.
@@ -249,26 +249,25 @@ def calculate_vertex_attributes(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     yield dict(id=src, neighbors=nbs.serialize())
 
 
-# schema: src:int,dst:int,shared_nbs_ids:[int]
-def calculate_edge_attributes(
-    df: Iterable[Dict[str, Any]], num_walks: int,
+# schema: src:int,dst:int,shared_neighbor_ids:[int]
+def get_edge_shared_neighbors(
+    df: pd.DataFrame, num_walks: int,
 ) -> Iterable[Dict[str, Any]]:
     """
-    A func for running mapPartitions to initiate attributes for every edge in the graph
+    Get the shared neighbors of the src and dst vertex of every edge in the graph
 
-    :param df: the dict with keys "src", "src_neighbors", "dst", "dst_neighbors"
-    :param num_walks:
+    :param df: a pandas df with cols "src", "dst", "dst_neighbors"
+    :param num_walks: the num of random walks starting from each vertex
     """
-    is_first = True
-    for row in df:
-        src_nbs_id = set(Neighbors(row["src_neighbors"]).dst_id)
+    src = df.loc[0, "src"]
+    for i in range(1, num_walks + 1):
+        yield dict(src=-i, dst=src, shared_neighbor_ids=[])
+
+    src_neighbors = set(df["dst"].tolist())
+    for _, row in df.iterrows():
         dst_nbs_id = Neighbors(row["dst_neighbors"]).dst_id
-        shared_ids = [x for x in dst_nbs_id if x in src_nbs_id]
-        if is_first is True:
-            for i in range(1, num_walks + 1):
-                yield dict(src=-i, dst=row["src"], shared_nbs_ids=[])
-            is_first = False
-        yield dict(src=row["src"], dst=row["dst"], shared_nbs_ids=shared_ids)
+        shared_ids = [x for x in dst_nbs_id if x in src_neighbors]
+        yield dict(src=row["src"], dst=row["dst"], shared_neighbor_ids=shared_ids)
 
 
 # schema: src:int,dst:int,path:[int]
@@ -313,9 +312,10 @@ def next_step_random_walk(
             alias_prob = AliasProb(generate_alias_tables(dst_nbs.dst_wt))
         else:
             dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
+            shared_nb_ids = row["shared_neighbor_ids"]
             alias_prob = AliasProb(
                 generate_edge_alias_tables(
-                    src, row["shared_nbs_ids"], dst_nbs_data, return_param, inout_param,
+                    src, shared_nb_ids, dst_nbs_data, return_param, inout_param,
                 )
             )
         path = RandomPath(row["path"])
