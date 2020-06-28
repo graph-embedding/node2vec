@@ -283,8 +283,7 @@ def test_initiate_random_walk():
     random.seed(20)
     src, nbs, ap = [3, 2], [[0, 1, 2], [3, 1]], [u'abc', u'bcd']
     # df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
-    df = [{"id": src[i], "neighbors": nbs[i], "alias_prob": ap[i]}
-          for i in range(len(src))]
+    df = [{"dst": src[i], "neighbors": nbs[i]} for i in range(len(src))]
 
     num_walks = 3
     res = iter(initiate_random_walk(df, num_walks))

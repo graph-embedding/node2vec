@@ -4,24 +4,22 @@ import random
 from typing import List
 from typing import Tuple
 
-random.seed(20)
-
 
 @pytest.mark.parametrize(
     "neighbors,result",
     [
-        ([(1, 0.5), (3, 1.0)], ([1, 0], [0.6666666666666666, 1.0])),
-        ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
-        ([(1, 0.2)], ([0], [1.0])),
-        ([(0, 1.0)], ([0], [1.0])),
+        ([0.5, 1.0], ([1, 0], [0.6666666666666666, 1.0])),
+        ([0.5, 0.2], ([0, 0], [1.0, 0.5714286])),
+        ([0.2], ([0], [1.0])),
+        ([1.0], ([0], [1.0])),
     ],
 )
 def test_generate_alias_tables(
-        neighbors: List[Tuple[int, float]],
-        result: Tuple[List[int], List[float]],
+    neighbors: List[float],
+    result: Tuple[List[int], List[float]],
 ) -> None:
     """
-
+    test utils func generate_alias_tables()
     """
     from node2vec.spark.utils import generate_alias_tables
 
@@ -31,52 +29,28 @@ def test_generate_alias_tables(
 
 
 @pytest.mark.parametrize(
-    "neighbors,result",
+    "src_id,shared_nb_ids,dst_nbs,return_param,inout_param,result",
     [
-        ([(1, 0.5), (3, 1.0)], ([1, 1], [0.6666666666666666, 1.0])),
-        ([(0, 0.5), (2, 0.2)], ([0, 0], [1.0, 0.5714285714285715])),
-        ([(1, 0.2)], ([0], [1.0])),
-        ([(0, 1.0)], ([0], [1.0])),
-    ],
-)
-def test_generate_alias_tables_wiki(
-        neighbors: List[Tuple[int, float]],
-        result: Tuple[List[int], List[float]],
-) -> None:
-    """
-
-    """
-    from node2vec.spark.utils import generate_alias_tables_wiki
-
-    alias, probs = generate_alias_tables_wiki(neighbors)
-    assert alias == result[0]
-    np.testing.assert_almost_equal(probs, result[1], decimal=7)
-
-
-@pytest.mark.parametrize(
-    "src_id,src_nbs,dst_nbs,param_p,param_q,result",
-    [
-        (0, [(1, 0.5), (3, 1.0)], [(0, 0.5), (2, 0.2)], 1.0, 1.0,
-         ([0, 0], [1.0, 0.5714285714285715])),
-        (1, [[(0, 0.5), (2, 0.2)]], [(1, 0.2)], 0.8, 1.5, ([0], [1.0])),
-        (3, [(0, 1.0)], [(1, 0.5), (3, 1.0)], 2.0, 4.0, ([1, 0], [0.4, 1.0])),
+        (0, [2], ([0, 2], [0.5, 0.2]), 1.0, 1.0, ([0, 0], [1.0, 0.5714285714285715])),
+        (1, [], ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
+        (3, [], ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
-        src_id: int,
-        src_nbs: List[Tuple[int, float]],
-        dst_nbs: List[Tuple[int, float]],
-        param_p: float,
-        param_q: float,
-        result: Tuple[List[int], List[float]],
+    src_id: int,
+    shared_nb_ids: List[int],
+    dst_nbs: Tuple[List[int], List[float]],
+    return_param: float,
+    inout_param: float,
+    result: Tuple[List[int], List[float]],
 ) -> None:
     """
-
+    test utils func generate_edge_alias_tables()
     """
     from node2vec.spark.utils import generate_edge_alias_tables
 
     alias, probs = generate_edge_alias_tables(
-        src_id, src_nbs, dst_nbs, param_p, param_q,
+        src_id, shared_nb_ids, dst_nbs, return_param, inout_param,
     )
     assert alias == result[0]
     np.testing.assert_almost_equal(probs, result[1], decimal=7)
@@ -90,17 +64,18 @@ def test_generate_edge_alias_tables(
         ([0], [1.0], 0),
     ],
 )
-def test_sampling_from_alias_original(
+def test__sampling_from_alias(
         alias: List[int],
         probs: List[float],
         result: int,
 ) -> None:
     """
-
+    test utils func _sampling_from_alias()
     """
-    from node2vec.spark.utils import sampling_from_alias_original
+    from node2vec.spark.utils import _sampling_from_alias
 
-    ans = sampling_from_alias_original(alias, probs)
+    random.seed(20)
+    ans = _sampling_from_alias(alias, probs, random.random(), random.random())
     assert ans == result
 
 
@@ -112,18 +87,18 @@ def test_sampling_from_alias_original(
         (0.88, [0], [1.0], 0),
     ],
 )
-def test_sampling_from_alias(
+def test__sampling_from_alias_wiki(
         randv: float,
         alias: List[int],
         probs: List[float],
         result: int,
 ) -> None:
     """
-
+    test utils func _sampling_from_alias_wiki()
     """
-    from node2vec.spark.utils import sampling_from_alias
+    from node2vec.spark.utils import _sampling_from_alias_wiki
 
-    ans = sampling_from_alias(randv, alias, probs)
+    ans = _sampling_from_alias_wiki(alias, probs, randv)
     assert ans == result
 
 
@@ -135,18 +110,18 @@ def test_sampling_from_alias(
         ([0, 3], [0], 0.88, [0], [1.0], [0, 3, 0]),
     ],
 )
-def test_next_step_random_walk(
-        path: List[int],
-        dst_nbs: List[int],
-        randv: float,
-        alias: List[int],
-        probs: List[float],
-        result: List[int],
+def test_extend_random_walk(
+    path: List[int],
+    dst_nbs: List[int],
+    alias: List[int],
+    probs: List[float],
+    randv: float,
+    result: List[int],
 ) -> None:
     """
-
+    test utils func extend_random_walk()
     """
-    from node2vec.spark.utils import next_step_random_walk
+    from node2vec.spark.utils import extend_random_walk
 
-    ans = next_step_random_walk(path, randv, dst_nbs, alias, probs)
+    ans = extend_random_walk(path, dst_nbs, alias, probs, randv)
     assert ans == result

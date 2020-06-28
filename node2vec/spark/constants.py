@@ -3,7 +3,7 @@ from typing import Any
 
 
 # num of partitions for map partitions
-NUM_PARTITIONS: int = 2000
+NUM_PARTITIONS: int = 3000
 
 
 # the default node2vec parameters

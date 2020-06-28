@@ -113,13 +113,9 @@ def random_walk(
     # create workflow
     df = FugueWorkflow(compute_engine).df(df_graph)
     # process vertices
-    df_vertex = (
-        df.partition(by=["src"], presort="dst")
-        .transform(get_vertex_neighbors)
-        .persist()
-    )
+    df_vertex = df.partition(by=["src"], presort="dst").transform(get_vertex_neighbors)
+    df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors").persist()
     # process edges
-    df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors")
     param1 = {"num_walks": n2v_params["num_walks"]}
     df_edge = (
         df[["src", "dst"]]
@@ -129,21 +125,20 @@ def random_walk(
         .persist()
     )
     # conduct random walk with distributed bfs
-    walks = df_vertex.transform(initiate_random_walk, params=param1).persist()
+    walks = df_dst[["dst"]].transform(initiate_random_walk, params=param1).persist()
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
         "seed": random_seed,
     }
-    for i in range(n2v_params["walk_length"]):
+    for _ in range(n2v_params["walk_length"]):
         walks = (
             walks.inner_join(df_dst)
             .inner_join(df_edge)
             .transform(next_step_random_walk, params=param2,)
+            .persist()
         )
-        if i % 2 == 1:
-            walks = walks.persist()
     # convert paths back to lists
-    df_walks = walks.transform(to_path).persist()
+    df_walks = walks.transform(to_path)
     logging.info("random_walk(): random walking done ...")
     return df_walks.compute()

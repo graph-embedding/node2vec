@@ -1,8 +1,6 @@
-import networkx as nx
 import logging
 import time
 from typing import Union
-from typing import List
 from typing import Any
 from typing import Dict
 from typing import Optional
@@ -14,11 +12,13 @@ from pyspark.ml.feature import Word2Vec
 from pyspark.ml.feature import Word2VecModel
 
 from node2vec.spark.constants import NUM_PARTITIONS
+from node2vec.spark.constants import NODE2VEC_PARAMS
 from node2vec.spark.constants import WORD2VEC_PARAMS
+from node2vec.spark.utils import get_vertex_neighbors
+from node2vec.spark.utils import get_edge_shared_neighbors
+from node2vec.spark.utils import initiate_random_walk
 from node2vec.spark.utils import next_step_random_walk
-from node2vec.spark.utils import aggregate_vertex_neighbors
-from node2vec.spark.utils import calculate_vertex_attributes
-from node2vec.spark.utils import calculate_edge_attributes
+from node2vec.spark.utils import get_standard_paths
 
 
 class Node2VecSpark:
@@ -29,221 +29,104 @@ class Node2VecSpark:
     def __init__(
         self,
         spark: SparkSession,
-        input_graph: Union[DataFrame, nx.Graph],
-        indexed: bool = False,
-        directed: bool = True,
-        num_walks: int = 30,
-        walk_length: int = 20,
-        return_param: float = 1.0,
-        inout_param: float = 1.0,
-        vector_size: int = 128,
-        w2vparams: Optional[Dict[str, Any]] = None,
+        n2v_params: Dict[str, Any],
+        w2v_params: Dict[str, Any],
+        window_size: Optional[int] = None,
+        vector_size: Optional[int] = None,
         random_seed: Optional[int] = None,
     ) -> None:
         """
-        A driver class for the distributed Node2Vec algorithm, for node indexing,
+        A driver class for the distributed Node2Vec algorithm for vertex indexing,
         graph embedding, read and write vectors and/or models.
 
-        :param spark: a Spark session
-        :param input_graph: data for constructing the graph, either a Spark DataFrame of
-                            edge lists or a Networkx Graph object (for synthetic graphs)
-        :param indexed: bool, True if the input graph has been indexed, or False
-        :param directed: bool, directed graph or not
-
-        :param num_walks: int, num of walks starting from each node on sampling random
-                          walks, usually [10, 30], tunable
-        :param walk_length: int, length of each random walk, usually [10, 30], tunable
-        :param return_param: float in (0, inf), parameter p in the Node2Vec paper,
-            weight on the probability of returning to a node coming from
-            Having this higher tends the walks to be more like a Breadth-First Search.
-            Having this very high (> 2) makes search very local. tunable
-        :param inout_param: float in (0, inf), parameter q in the Node2Vec paper
-            the weight on the probability of visiting a neighbor node to the one we're
-            coming from in the random walk
-            Having this higher tends the walks to be more like a Depth-First Search.
-            Having this very high makes search more outward.
-            Having this very low makes search very local.  tunable
-
-        :param vector_size: int, dimension of the output graph embeding representation
+        :param spark: an active Spark session
+        :param n2v_params: dict of the node2vec params for num_walks, walk_length,
+                           return_param, and inout_param, with default values
+        :param window_size: the context size for word2vec embedding
+        :param vector_size: int, dimension of the output graph embedding representation
                             num of codes after transforming from words (dimension
                             of embedding feature representation), usually power of 2,
                             e.g. 64, 128, 256
-        :param w2vparams: dict of parameters to pass to gensim's word2vec module (not
-                          to set embedding dim here)
-        :param random_seed: int, the global random sampling seed
+        :param w2v_params: dict of parameters to pass to gensim's word2vec module (not
+                           to set embedding dim here)
+        :param random_seed: optional random seed, for testing only
         """
         logging.info("__init__(): preprocssing input graph data ...")
         self.spark = spark
-        self.walks: Optional[Word2VecModel] = None
+        self.random_seed = random_seed if random_seed else int(time.time())
+        self.df: Optional[DataFrame] = None
+        self.name_id: Optional[DataFrame] = None
         self.model: Optional[Word2VecModel] = None
-        self.vertices: Optional[DataFrame] = None
-        self.edges: Optional[DataFrame] = None
 
-        # index the graph and construct mapping from node name to node id
-        df_graph = self._validate_input_graph(spark, input_graph)
+        # update n2v_params
+        for param in NODE2VEC_PARAMS:
+            if param not in n2v_params:
+                n2v_params[param] = NODE2VEC_PARAMS[param]
+        self.n2v_params = n2v_params
+
+        # update w2v_params
+        for param in WORD2VEC_PARAMS:
+            if param not in w2v_params:
+                w2v_params[param] = WORD2VEC_PARAMS[param]
+        w2v_params["seed"] = self.random_seed
+        if window_size is not None:
+            if window_size < 5 or window_size > 30:
+                raise ValueError(f"Inappropriate context window size {window_size}!")
+            w2v_params["windowSize"] = window_size
+        if vector_size is not None:
+            if vector_size < 32 or vector_size > 1024:
+                raise ValueError(f"Inappropriate vector dimension {vector_size}!")
+            w2v_params["vectorSize"] = vector_size
+        self.w2v_params = w2v_params
+        logging.info(f"__init__(): w2v params: {w2v_params}")
+        self.word2vec = Word2Vec(inputCol="walk", outputCol="vector", **w2v_params)
+
+    def preprocess_input_graph(
+        self, df_graph: DataFrame, indexed: bool, directed: bool,
+    ) -> None:
+        """
+        Preprocess the input graph dataframe so that it returns a dataframe in
+        standard format ['src', 'dst', 'weight']
+
+        If required, index all vertices and edges in a graph by using an int32 to
+        represent a vertex
+
+        :param df_graph: a Spark dataframe w/ cols "src", "dst", and optional "weight"
+        :param indexed: bool, True if the input graph has been indexed, or False
+        :param directed: bool, directed graph or not
+
+        Return the validated and indexed (if needed) dataframe or throw exceptions
+        """
+        if "src" not in df_graph.columns or "dst" not in df_graph.columns:
+            raise ValueError(f"Input graph NOT in the right format: {df_graph.columns}")
+        if "weight" not in df_graph.columns:
+            df_graph = df_graph.withColumn("weight", ssf.lit(1.0))
+        df_graph = df_graph.withColumn("weight", df_graph["weight"].cast("float"))
         if directed is False:
             df_rev = df_graph.select("dst", "src", "weight")
             df_graph = df_graph.union(df_rev)
-        # the format-compliant indexed graph
-        self.df = self._index_graph(spark, df_graph) if indexed is False else df_graph
 
-        # word2vec: params and model
-        if vector_size < 32 or vector_size > 1024:
-            raise ValueError(f"Inappropriate vector dimension {vector_size}!")
-        if num_walks < 2 or walk_length < 2:
-            raise ValueError(f"Error as num_walks='{num_walks}' length='{walk_length}'")
-        if w2vparams is None:
-            w2vparams = WORD2VEC_PARAMS
-
-        self.random_seed = random_seed or int(round(time.time() * 1000))
-        if w2vparams.get("seed", None) is None:
-            w2vparams["seed"] = self.random_seed
-        logging.info(f"__init__(): w2v params: {w2vparams}")
-        self.word2vec = Word2Vec(
-            vectorSize=vector_size, inputCol="walk", outputCol="vector", **w2vparams,
-        )
-        self.num_walks = num_walks
-        self.walk_length = walk_length
-        self.return_param = return_param
-        self.inout_param = inout_param
-
-    @staticmethod
-    def _validate_input_graph(
-        spark: SparkSession, input_graph: Union[DataFrame, nx.Graph],
-    ) -> DataFrame:
-        """
-        a helper func to preprocess the input graph dataframe so that it returns a
-        dataframe in standard format ['src', 'dst', 'weight']
-
-        :param spark: an active SparkSession
-        :param input_graph: the Spark Dataframe of edge lists or networkx graph object
-
-        return the processed dataframe or throw exceptions
-        """
-        try:
-            if isinstance(input_graph, nx.Graph):
-                graph = input_graph.edges.data("weight", default=1.0)
-                edge_list = [{"src": e[0], "dst": e[1], "weight": e[2]} for e in graph]
-                df_graph = spark.createDataFrame(Row(**r) for r in edge_list).select(
-                    "src", "dst", "weight"
-                )
-            else:
-                if "weight" not in input_graph.columns:
-                    input_graph = input_graph.withColumn("weight", ssf.lit(1.0))
-                df_graph = input_graph.select("src", "dst", "weight")
-                df_graph = (
-                    df_graph.withColumn("src", df_graph["src"].cast("int"))
-                    .withColumn("dst", df_graph["dst"].cast("int"))
-                    .withColumn("weight", df_graph["weight"].cast("float"))
-                )
-        except Exception as e:
-            raise ValueError("Input graph is in wrong format!") from e
-        return df_graph
-
-    @staticmethod
-    def _index_graph(spark: SparkSession, df: DataFrame,) -> DataFrame:
-        """
-        Index all vertices and edges in a graph by using an int32 to represent a vertex
-
-        :param spark: an active SparkSession
-        :param df: the Spark Dataframe of edge lists
-        return the indexed DataFrame with vertex id and vertex name columns.
-        """
-        df_node = df.select("src").union(df.select("dst")).distinct()
-        df_node.createOrReplaceTempView("df_node")
-        name_id = spark.sql(
-            """
-            SELECT src AS vertex_name,
-                   row_number() OVER(ORDER BY src) - 1 AS vertex_id
-              FROM df_node
-        """
-        ).cache()
-        logging.info(f"Total number of vertices: {name_id.count()}")
-
-        df.createOrReplaceTempView("df")
-        name_id.createOrReplaceTempView("name_id")
-        df_graph = spark.sql(
-            """
-            SELECT a.vertex_id AS src,
-                   a.vertex_name AS name,
-                   b.vertex_id AS dst,
-                   df.weight AS weight
-              FROM df
-              JOIN name_id AS a
-                ON df.src = a.vertex_name
-              JOIN name_id AS b
-                ON df.dst = b.vertex_name
-        """
-        ).cache()
-        logging.info(f"size of indexed graph: {df_graph.count()}")
-        return df_graph
-
-    def init_node_dataframe(self) -> DataFrame:
-        """
-        A utility function to initiate the state of the Node2Vec model:
-        1) normalize edge weights;
-        2) initiate the transition probabilities
-        3) create vertices and edges dataframe for a GraphFrame
-
-        Returns the node dataframe with two node attributes:
-            neighbors: List[Tuple[int, float]] = []
-            path: List[int] = []
-        where each vertex replicates for "num_walks" times
-        """
-        vertex = self.df.repartition(NUM_PARTITIONS, ["src"]).rdd.mapPartitions(
-            calculate_vertex_attributes(self.num_walks)
-        )
-        self.vertices = self.spark.createDataFrame(vertex).cache()
-        logging.info(f"number of walks to be generated: {self.vertices.count()}")
-        return self.vertices
-
-    def init_edge_dataframe(self) -> DataFrame:
-        """
-        A utility function to initiate the state of the Node2Vec model:
-        1) normalize edge weights;
-        2) initiate the transition probabilities
-        3) create vertices and edges dataframe for a GraphFrame
-
-        Returns the edge dataframe with three edge attributes:
-             dst_neighbors: List[int] = []
-             alias: List[int] = []
-             probs: List[float] = []
-        """
-        rdd_vertex = self.df.repartition(NUM_PARTITIONS, ["src"]).rdd.mapPartitions(
-            aggregate_vertex_neighbors
-        )
-        df_vertex = self.spark.createDataFrame(rdd_vertex).cache()
-        logging.info(f"number of vertices: {df_vertex.count()}")
-
-        df_vertex.createOrReplaceTempView("df_vertex")
-        self.df.repartition(NUM_PARTITIONS).createOrReplaceTempView("edges")
-        edges = self.spark.sql(
-            """
-            SELECT edges.src,
-                   edges.dst,
-                   a.neighbors AS src_neighbors,
-                   b.neighbors AS dst_neighbors
-              FROM edges
-              JOIN df_vertex AS a
-                ON edges.src = a.id
-              JOIN df_vertex AS b
-                ON edges.dst = b.id
-        """
-        ).repartition(NUM_PARTITIONS, ["src"])
-
-        self.edges = (
-            self.spark.createDataFrame(
-                edges.rdd.mapPartitions(
-                    calculate_edge_attributes(
-                        self.return_param, self.inout_param, self.num_walks,
-                    )
-                )
+        if indexed is True:
+            self.df = (
+                df_graph.select("src", "dst", "weight")
+                .withColumn("src", df_graph["src"].cast("int"))
+                .withColumn("dst", df_graph["dst"].cast("int"))
             )
-            .select("edge", "dst_neighbors", "alias", "probs")
-            .cache()
-        )
-        df_vertex.unpersist()
-        return self.edges
+            return
+        # index the input graph
+        df = df_graph.select("src").union(df_graph.select("dst")).distinct().sort("src")
+        name_id = (
+            df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1]))).toDF()
+        ).cache()
+        self.name_id = name_id
+        logging.info(f"Num of indexed vertices: {self.name_id.count()}")
+
+        df = df_graph.withColumnRenamed("src", "src1").withColumnRenamed("dst", "dst1")
+        srcid = name_id.withColumnRenamed("name", "src1").withColumnRenamed("id", "src")
+        dstid = name_id.withColumnRenamed("name", "dst1").withColumnRenamed("id", "dst")
+        df_edge = df.join(srcid, on=["src1"]).join(dstid, on=["dst1"])
+        self.df = df_edge.select("src", "dst", "weight").cache()
+        logging.info(f"Num of indexed edges: {self.df.count()}")
 
     def random_walk(self) -> DataFrame:
         """
@@ -269,40 +152,53 @@ class Node2VecSpark:
         7     [7 8 1 7 4]
         ------------------
         """
-        if self.edges is None:
-            self.edges = self.init_edge_dataframe()
-        rdd_edge = self.edges.rdd.map(
-            lambda x: (x["edge"], (x["dst_neighbors"], x["alias"], x["probs"]))
+        if self.df is None:
+            raise ValueError("Please validate and/or index the input graph")
+        logging.info("random_walk(): start random walking ...")
+        # process vertices
+        df = self.df.repartition(NUM_PARTITIONS, ["src"])
+        df_dst = self.spark.createDataFrame(
+            df.rdd.mapPartitions(get_vertex_neighbors)
+        ).cache()
+        logging.info(f"random_walk(): df_dst length = {df_dst.count()}")
+
+        # process edges
+        num_walks = self.n2v_params["num_walks"]
+        df = (
+            self.df.select("src", "dst")
+            .join(df_dst, on=["dst"])
+            .repartition(NUM_PARTITIONS, ["src"])
         )
-        if self.vertices is None:
-            self.vertices = self.init_node_dataframe()
-        df_path = self.vertices.select("id", "path")
-        for i in range(self.walk_length):
-            rand_seed = self.random_seed + i * 1000
-            df_path = (
-                df_path.withColumn("rand", ssf.rand(rand_seed))
-                .rdd.map(lambda x: (f"{x['path'][-2]} {x['path'][-1]}", x))
-                .join(rdd_edge)
-                .map(
-                    lambda x: (
-                        x[1][0]["id"],  # src id
-                        next_step_random_walk(
-                            x[1][0]["path"],  # path
-                            x[1][0]["rand"],  # random double
-                            x[1][1][0],  # dst_neighbors
-                            x[1][1][1],  # jvar
-                            x[1][1][2],
-                        ),  # qvar
-                    )
-                )
-                .toDF(["id", "path"])
+        df_edge = self.spark.createDataFrame(
+            df.rdd.mapPartitions(get_edge_shared_neighbors(num_walks))
+        ).cache()
+        logging.info(f"random_walk(): df_edge length = {df_edge.count()}")
+
+        # conduct random walk with distributed bfs
+        walks = self.spark.createDataFrame(
+            df_dst.select("dst").rdd.mapPartitions(initiate_random_walk(num_walks))
+        ).cache()
+        logging.info(f"random_walk(): init walks length = {walks.count()}")
+        param_p = self.n2v_params["return_param"]
+        param_q = self.n2v_params["inout_param"]
+        for i in range(self.n2v_params["walk_length"]):
+            next_walks = walks.join(df_dst, on=["dst"]).join(df_edge, on=["src", "dst"])
+            walks_rdd = next_walks.rdd.mapPartitionsWithIndex(
+                next_step_random_walk(param_p, param_q, self.random_seed)
             )
-        self.walks = (
-            df_path.withColumnRenamed("id", "src")
-            .withColumnRenamed("path", "walk")
-            .repartition(NUM_PARTITIONS)
-        )
-        return self.walks
+            next_walks = self.spark.createDataFrame(walks_rdd).cache()
+            logging.info(
+                f"random_walk(): round {i} walks length = {next_walks.count()}"
+            )
+            walks.rdd.unpersist()
+            walks = next_walks
+
+        # convert paths back to lists
+        df_walks = self.spark.createDataFrame(
+            walks.rdd.mapPartitions(get_standard_paths)
+        ).cache()
+        logging.info(f"random_walk(): num of walks generated: {df_walks.count()}")
+        return df_walks
 
     def fit(self, df_walks: Optional[DataFrame] = None) -> Word2VecModel:
         """
@@ -313,7 +209,7 @@ class Node2VecSpark:
         return the fit model of Word2Vec
         """
         if df_walks is None:
-            df_walks = self.random_walk()
+            raise ValueError("Please conduct random walk on the input graph")
         df_walks = df_walks.select("walk").withColumn(
             "walk", df_walks["walk"].cast("array<string>")
         )
@@ -321,103 +217,40 @@ class Node2VecSpark:
         logging.info("model fitting done!")
         return self.model
 
-    def embedding(self, df_walks: Optional[DataFrame] = None) -> DataFrame:
+    def embedding(self) -> DataFrame:
         """
-        the entry point for fitting a node2vec process of graph embedding
-
-        :param df_walks: the DataFrame of random walks: ["src", "walk"], where "walk"
-                         is a list column
-        Returns the resulting embedding vectors as a dataframe
+        Return the resulting df, and map back vertex name if the graph is indexed
         """
-        self.model = self.fit(df_walks)
-        return self.model.getVectors()
+        if self.model is None:
+            raise ValueError("Model is not available. Please run fit()")
+        df = self.model.getVectors()
+        if self.name_id is not None:
+            df = df.join(self.name_id, on=["id"])
+            df = df.select(df["name"].alias("token"), "vector")
+        return df
 
-    def get_vector(self, vertex_name: Union[str, int]) -> List[float]:
+    def get_vector(self, vertex_name: Union[str, int]) -> DataFrame:
         """
-        vertex_name: str or int, either the node ID or name depending on graph format
-
-        Return vector associated with a node identified by the original node name/id
+        :param vertex_name: the vertex name
+        Return the vector associated with a node or all vectors
         """
-        if isinstance(vertex_name, str):
-            if "name" not in self.vertices.columns:  # type: ignore
-                raise ValueError(f"Input vertex name '{vertex_name}' is NOT indexed!")
-            vertex = self.vertices.filter(f"name = '{vertex_name}'")  # type: ignore
-            vertex_id = int(vertex.collect()[0])
-        else:
-            vertex_id = vertex_name
-        try:
-            vec = self.model.getVectors().filter(f"word = {vertex_id}")  # type: ignore
-            res = vec.select("vector").head().asDict()
-            return list(res["vector"])
-        except Exception as e:
-            raise ValueError(f"Failed to get vector for {vertex_name}!") from e
-
-    @staticmethod
-    def _validate_path(cloud_path: str) -> str:
-        if not cloud_path.endswith("/"):
-            cloud_path += "/"
-        return cloud_path
-
-    def save_vectors(self, cloud_path: str, model_name: str,) -> None:
-        """
-        Save as graph embedding vectors as a Spark DataFrame
-
-        :param cloud_path: a gcs or s3 bucket
-        :param model_name: the name to be used for the model file
-        """
-        cloud_path = self._validate_path(cloud_path)
-        try:
-            self.word2vec.save(cloud_path + model_name)
-        except Exception as e:
-            raise ValueError("save_vectors(): failed with exception!") from e
-
-    def load_vectors(self, cloud_path: str, model_name: str,) -> DataFrame:
-        """
-        Load graph embedding vectors from saved file to a Spark DataFrame
-
-        :param cloud_path: a gcs or s3 bucket
-        :param model_name: the name to be used for the model file
-        returns a dataframe
-        """
-        cloud_path = self._validate_path(cloud_path)
-        try:
-            vectors = Word2Vec.load(cloud_path + model_name)
-            return vectors
-        except Exception as e:
-            raise ValueError("load_vectors(): failed with exception!") from e
-
-    @staticmethod
-    def _validate_modelname(model_name: str) -> str:
-        if not model_name.endswith(".model"):
-            model_name += ".model"
-        return model_name
+        if isinstance(vertex_name, int):
+            vertex_name = str(vertex_name)
+        return self.model.getVectors().filter(f"word = {vertex_name}")  # type: ignore
 
     def save_model(self, cloud_path: str, model_name: str,) -> None:
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
-
-        :param cloud_path: a gcs or s3 bucket
-        :param model_name: the name to be used for the model file
         """
-        cloud_path = self._validate_path(cloud_path)
-        model_name = self._validate_modelname(model_name)
-        try:
-            self.model.save(cloud_path + model_name)  # type: ignore
-        except Exception as e:
-            raise ValueError("save_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
     def load_model(self, cloud_path: str, model_name: str,) -> Word2VecModel:
         """
         Load a previously saved Word2Vec model object to memory.
-
-        :param cloud_path: a gcs or s3 bucket
-        :param model_name: the name to be used for the model file, append ".model" to
-                           it if it doesn't end with ".model".
         """
-        cloud_path = self._validate_path(cloud_path)
-        model_name = self._validate_modelname(model_name)
-        try:
-            model = Word2VecModel.load(cloud_path + model_name)
-            return model
-        except Exception as e:
-            raise ValueError("load_model(): failed with exception!") from e
+        if not model_name.endswith(".sparkml"):
+            model_name += ".sparkml"
+        self.model = Word2VecModel.load(cloud_path + "/" + model_name)
+        return self.model

@@ -275,7 +275,7 @@ def initiate_random_walk(
     df: Iterable[Dict[str, Any]], num_walks: int,
 ) -> Iterable[Dict[str, Any]]:
     """
-    A func for running mapPartitions to initiate attributes for every node in the graph
+    Initiate the random walk path and replicate for num_walks times
 
     :param df: a pandas dataframe from a partition of the node dataframe
     :param num_walks: int, the number of random walks starting from each vertex
@@ -283,7 +283,7 @@ def initiate_random_walk(
     return a Iterable of dict, each of which is a row of the result df.
     """
     for arow in df:
-        src = arow["id"]
+        src = arow["dst"]
         row = {"dst": src}
         for i in range(1, num_walks + 1):
             row.update({"src": -i, "path": [-i, src]})
