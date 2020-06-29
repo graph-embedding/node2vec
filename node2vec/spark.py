@@ -13,6 +13,10 @@ from pyspark.sql import SparkSession
 from pyspark.sql import DataFrame
 from pyspark.sql import Row
 from pyspark.sql import functions as ssf
+from pyspark.sql.types import StructType
+from pyspark.sql.types import StructField
+from pyspark.sql.types import IntegerType
+from pyspark.sql.types import ArrayType
 from pyspark.ml.feature import Word2Vec
 from pyspark.ml.feature import Word2VecModel
 
@@ -485,7 +489,14 @@ class Node2VecSpark:
             .repartition(NUM_PARTITIONS, ["src"])
         )
         df_edge = self.spark.createDataFrame(
-            df.rdd.mapPartitions(get_edge_shared_neighbors(num_walks))
+            df.rdd.mapPartitions(get_edge_shared_neighbors(num_walks)),
+            schema=StructType(
+                [
+                    StructField("src", IntegerType(), False),
+                    StructField("dst", IntegerType(), False),
+                    StructField("shared_neighbor_ids", ArrayType(IntegerType()), True),
+                ]
+            ),
         ).cache()
         logging.info(f"random_walk(): df_edge length = {df_edge.count()}")
 
