@@ -15,7 +15,7 @@ pip install node2vec-fugue
 
 ## Release History
 
-### 0.2.11
+### 0.2.12
 * Refactor and add native PySpark node2vec
 
 ### 0.2.9

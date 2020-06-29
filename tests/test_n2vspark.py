@@ -21,7 +21,7 @@ def test_generate_alias_tables(
     """
     test utils func generate_alias_tables()
     """
-    from node2vec.spark import generate_alias_tables
+    from node2vec.n2vspark import generate_alias_tables
 
     alias, probs = generate_alias_tables(neighbors)
     assert alias == result[0]
@@ -47,7 +47,7 @@ def test_generate_edge_alias_tables(
     """
     test utils func generate_edge_alias_tables()
     """
-    from node2vec.spark import generate_edge_alias_tables
+    from node2vec.n2vspark import generate_edge_alias_tables
 
     alias, probs = generate_edge_alias_tables(
         src_id, shared_nb_ids, dst_nbs, return_param, inout_param,
@@ -72,7 +72,7 @@ def test__sampling_from_alias(
     """
     test utils func _sampling_from_alias()
     """
-    from node2vec.spark import _sampling_from_alias
+    from node2vec.n2vspark import _sampling_from_alias
 
     random.seed(20)
     ans = _sampling_from_alias(alias, probs, random.random(), random.random())
@@ -96,7 +96,7 @@ def test__sampling_from_alias_wiki(
     """
     test utils func _sampling_from_alias_wiki()
     """
-    from node2vec.spark import _sampling_from_alias_wiki
+    from node2vec.n2vspark import _sampling_from_alias_wiki
 
     ans = _sampling_from_alias_wiki(alias, probs, randv)
     assert ans == result
@@ -121,7 +121,7 @@ def test_extend_random_walk(
     """
     test utils func extend_random_walk()
     """
-    from node2vec.spark import extend_random_walk
+    from node2vec.n2vspark import extend_random_walk
 
     ans = extend_random_walk(path, dst_nbs, alias, probs, randv)
     assert ans == result
