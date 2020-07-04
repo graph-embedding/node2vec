@@ -66,9 +66,9 @@ def test_class_aliasprob():
         assert jq.alias == alias
         assert jq.probs == probs
         assert jq.serialize() == code64
-
-        assert jq.draw_alias(nbs) == 22
-        assert jq.draw_alias(nbs, 10) == 22
+        first_random = random.random()
+        assert nbs.dst_id[jq.sampling_from_alias_wiki(first_random)] == 22
+        assert nbs.dst_id[jq.sampling_from_alias(first_random, random.random())] == 22
 
     #
     alias, probs = [0, 0], [1.0, 0.5714285714285715]
@@ -84,9 +84,9 @@ def test_class_aliasprob():
         assert jq.alias == alias
         assert jq.probs == probs
         assert jq.serialize() == code64
-
-        assert jq.draw_alias(nbs) == 122
-        assert jq.draw_alias(nbs, 10) == 221
+        first_random = random.random()
+        assert nbs.dst_id[jq.sampling_from_alias_wiki(first_random)] == 122
+        assert nbs.dst_id[jq.sampling_from_alias(first_random, random.random())] == 122
 
 
 #
@@ -124,7 +124,7 @@ def test_class_randompath(
         assert rp.serialize() == code
         assert rp.__str__() == str(path)
 
-        assert rp.append(nb, ap).path == result
+        assert rp.append(nb.dst_id, ap, random.random()).path == result
 
 
 #
@@ -316,7 +316,7 @@ def test_next_step_random_walk():
            "dst_neighbors": dst_neighbors[i],
            "shared_neighbor_ids": shared_ids[i]} for i in range(len(src))]
 
-    res = iter(next_step_random_walk(df, 1.0, 1.0))
+    res = iter(next_step_random_walk(df, 1.0, 1.0, 1000))
     ans = next(res)
     assert sorted(ans.keys()) == ['dst', 'path', 'src']
     assert ans['src'] == 1

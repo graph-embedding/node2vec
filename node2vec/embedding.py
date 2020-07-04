@@ -4,6 +4,7 @@ import gensim
 import pandas as pd
 import numpy as np
 from typing import Union
+from typing import List
 from typing import Any
 from typing import Dict
 from typing import Optional
@@ -33,7 +34,14 @@ class Node2VecBase(object):
         """
         raise NotImplementedError()
 
-    def get_vector(self, vertex_id: Optional[Union[str, int]] = None):
+    def embedding(self):
+        """
+        Return the final embedding results as a 2-col dataframe. If indexing is
+        conducted, this func will map vertex id back to the original vertex name.
+        """
+        raise NotImplementedError()
+
+    def get_vector(self, vertex_id: Union[str, int]):
         """
         vertex_id: str or int, either the node ID or name depending on graph format
         Return vector associated with a node identified by the original node name/id
@@ -64,15 +72,13 @@ class Node2VecGensim(Node2VecBase):
     A wrapper class to handle input and output data for distributed node2vec algorithm.
     """
 
-    f_model = "model.pckl"
-    f_mdata = "metadata.json"
-
     def __init__(
         self,
         df_walks: pd.DataFrame,
+        w2v_params: Dict[str, Any],
+        name_id: Optional[pd.DataFrame] = None,
         window_size: Optional[int] = None,
         vector_size: Optional[int] = None,
-        w2v_params: Optional[Dict[str, Any]] = None,
         random_seed: Optional[int] = None,
     ) -> None:
         """
@@ -80,6 +86,7 @@ class Node2VecGensim(Node2VecBase):
         vectors and/or models.
 
         :param df_walks: the 2-column dataframe of all random walk paths, [src, walk]
+        :param name_id: a two-col dataframe of mapping from vertex name to vertex id
         :param window_size: the context size for word2vec embedding
         :param vector_size: int, dimension of the output graph embedding representation
                             num of codes after transforming from words (dimension
@@ -92,14 +99,12 @@ class Node2VecGensim(Node2VecBase):
         logging.info("__init__(): preprocssing in spark ...")
         super().__init__()
         self.walks = df_walks
+        self.name_id = name_id
         self.model: Optional[GensimW2V] = None
 
-        if w2v_params is not None:
-            tmp_param = GENSIM_PARAMS.copy()
-            tmp_param.update(w2v_params)
-            w2v_params = tmp_param
-        else:
-            w2v_params = GENSIM_PARAMS
+        for param in GENSIM_PARAMS:
+            if param not in w2v_params:
+                w2v_params[param] = GENSIM_PARAMS[param]
         w2v_params["seed"] = random_seed if random_seed else int(time.time()) // 60
         if window_size is not None:
             if window_size < 5 or window_size > 40:
@@ -121,15 +126,29 @@ class Node2VecGensim(Node2VecBase):
         self.model = gensim.models.Word2Vec(sentences=all_walks, **self.w2v_params)
         return self.model
 
-    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> KeyedVectors:
+    def embedding(self) -> pd.DataFrame:
+        """
+        Return the resulting df, and map back vertex name if the graph is indexed
+        """
+        if self.model is None:
+            raise ValueError("Model is not available. Please run fit()")
+        ids = [int(t) for t in self.model.wv.vocab]
+        vectors = [list(self.model.wv.__getitem__(t)) for t in self.model.wv.vocab]
+        if self.name_id is not None:
+            dic = self.name_id.set_index("id").to_dict()["name"]
+            names = [dic[i] for i in ids]
+            df_res = pd.DataFrame.from_dict({"name": names, "vector": vectors})
+        else:
+            df_res = pd.DataFrame.from_dict({"id": ids, "vector": vectors})
+        return df_res
+
+    def get_vector(self, vertex_id: Union[str, int]) -> List[float]:
         """
         Return vector associated with a node identified by the original node name/id
         """
-        if vertex_id is None:
-            return self.model.wv  # type: ignore
         if isinstance(vertex_id, int):
             vertex_id = str(vertex_id)
-        return self.model.wv.__getitem__(vertex_id)  # type: ignore
+        return list(self.model.wv.__getitem__(vertex_id))  # type: ignore
 
     def save_model(self, file_path: str, file_name: str) -> None:
         """
@@ -168,9 +187,10 @@ class Node2VecSpark(Node2VecBase):
     def __init__(
         self,
         df_walks: DataFrame,
+        w2v_params: Dict[str, Any],
+        name_id: Optional[DataFrame] = None,
         window_size: Optional[int] = None,
         vector_size: Optional[int] = None,
-        w2v_params: Optional[Dict[str, Any]] = None,
         random_seed: Optional[int] = None,
     ) -> None:
         """
@@ -178,26 +198,26 @@ class Node2VecSpark(Node2VecBase):
         read and write vectors and/or models.
 
         :param df_walks: Spark dataframe of all random walk paths, [src, walk]
+        :param w2v_params: dict of parameters to pass to gensim's word2vec module (not
+                           to set embedding dim here)
+        :param name_id: a two-col dataframe of mapping from vertex name to vertex id
         :param window_size: the context size for word2vec embedding
         :param vector_size: int, dimension of the output graph embedding representation
                             num of codes after transforming from words (dimension
                             of embedding feature representation), usually power of 2,
                             e.g. 64, 128, 256
-        :param w2v_params: dict of parameters to pass to gensim's word2vec module (not
-                           to set embedding dim here)
         :param random_seed: optional random seed, for testing only
         """
         logging.info("__init__(): preprocssing in spark ...")
         super().__init__()
         self.walks = df_walks
+        self.name_id = name_id
         self.model: Optional[SparkW2VModel] = None
 
-        if w2v_params is not None:
-            tmp_param = WORD2VEC_PARAMS.copy()
-            tmp_param.update(w2v_params)
-            w2v_params = tmp_param
-        else:
-            w2v_params = WORD2VEC_PARAMS
+        # update w2v_params
+        for param in WORD2VEC_PARAMS:
+            if param not in w2v_params:
+                w2v_params[param] = WORD2VEC_PARAMS[param]
         w2v_params["seed"] = random_seed if random_seed else int(time.time())
         if window_size is not None:
             if window_size < 5 or window_size > 40:
@@ -221,13 +241,22 @@ class Node2VecSpark(Node2VecBase):
         logging.info("model fitting done!")
         return self.model
 
-    def get_vector(self, vertex_id: Optional[Union[str, int]] = None) -> DataFrame:
+    def embedding(self) -> DataFrame:
+        """
+        Return the resulting df, and map back vertex name if the graph is indexed
+        """
+        if self.model is None:
+            raise ValueError("Model is not available. Please run fit()")
+        df = self.model.getVectors().withColumnRenamed("word", "id")
+        if self.name_id is not None:
+            df = df.join(self.name_id, on=["id"]).select("name", "vector")
+        return df
+
+    def get_vector(self, vertex_id: Union[str, int]) -> DataFrame:
         """
         :param vertex_id: the vertex name
         Return the vector associated with a node or all vectors
         """
-        if vertex_id is None:
-            return self.model.getVectors()  # type: ignore
         return self.model.getVectors().filter(f"word = {vertex_id}")  # type: ignore
 
     def save_model(self, cloud_path: str, model_name: str,) -> None:

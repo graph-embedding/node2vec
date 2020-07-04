@@ -6,6 +6,10 @@ from typing import Any
 MAX_OUT_DEGREES: int = 1000000
 
 
+# num of partitions for map partitions
+NUM_PARTITIONS: int = 3000
+
+
 # the default node2vec parameters
 NODE2VEC_PARAMS: Dict[str, Any] = {
     #  num of walks starting from each node on sampling random walks, [10, 30]

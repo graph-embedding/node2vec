@@ -14,15 +14,15 @@ def test_index_graph_pandas():
     df_graph = pd.DataFrame.from_dict({
         'src': ['a1', 'a2', 'a3', 'a4'], 'dst': ['a2', 'b1', 'b2', 'a1'],
     })
-    df, vid = index_graph_pandas(df_graph)
+    df, vid = index_graph_pandas(df_graph, False)
 
     assert isinstance(vid, pd.DataFrame) and len(vid) == 6
-    assert isinstance(df, pd.DataFrame) and len(df) == len(df_graph)
+    assert isinstance(df, pd.DataFrame) and len(df) == 2 * len(df_graph)
 
     df1 = pd.DataFrame.from_dict({
         'dst': ['a2', 'b1', 'b2', 'a1'], 'weight': [0.8, 1.1, 1.0, 0.3]
     })
-    pytest.raises(ValueError, index_graph_pandas, df1)
+    pytest.raises(ValueError, index_graph_pandas, df1, True)
 
 
 #
@@ -36,12 +36,12 @@ def test_index_graph_spark():
     df_graph = spark.createDataFrame(pd.DataFrame.from_dict({
         'src': ['a1', 'a2', 'a3', 'a4'], 'dst': ['a2', 'b1', 'b2', 'a1'],
     }))
-    df, vid = index_graph_spark(df_graph)
+    df, vid = index_graph_spark(df_graph, False)
 
     assert isinstance(vid, DataFrame) and vid.count() == 6
-    assert isinstance(df, DataFrame) and df.count() == df_graph.count()
+    assert isinstance(df, DataFrame) and df.count() == 2 * df_graph.count()
 
     df1 = spark.createDataFrame(pd.DataFrame.from_dict({
         'dst': ['a2', 'b1', 'b2', 'a1'], 'weight': [0.8, 1.1, 1.0, 0.3]
     }))
-    pytest.raises(ValueError, index_graph_spark, df1)
+    pytest.raises(ValueError, index_graph_spark, df1, True)

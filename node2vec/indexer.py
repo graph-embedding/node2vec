@@ -6,11 +6,14 @@ from pyspark.sql import Row
 from pyspark.sql import functions as ssf
 
 
-def index_graph_pandas(df_graph: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def index_graph_pandas(
+    df_graph: pd.DataFrame, directed: bool,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex
 
     :param df_graph: pandas dataframe of edge lists
+    :param directed: if the graph is directed or not
     return the indexed DataFrame with vertex id and vertex name columns.
     """
     if "src" not in df_graph.columns or "dst" not in df_graph.columns:
@@ -35,14 +38,21 @@ def index_graph_pandas(df_graph: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFra
         columns={"src_id": "src", "dst_id": "dst"}
     )
     logging.info(f"Num of indexed edges: {df_edge.count()}")
+    if directed is not True:
+        df2 = df_edge[["dst", "src", "weight"]].copy()
+        df2.columns = ["src", "dst", "weight"]
+        df_edge = df_edge.append(df2).drop_duplicates()
     return df_edge, name_id
 
 
-def index_graph_spark(df_graph: DataFrame) -> Tuple[DataFrame, DataFrame]:
+def index_graph_spark(
+    df_graph: DataFrame, directed: bool,
+) -> Tuple[DataFrame, DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex
 
     :param df_graph: Spark Dataframe of edge lists
+    :param directed: if the graph is directed or not
     return the indexed DataFrame with vertex id and vertex name columns.
     """
     if "src" not in df_graph.columns or "dst" not in df_graph.columns:
@@ -63,4 +73,6 @@ def index_graph_spark(df_graph: DataFrame) -> Tuple[DataFrame, DataFrame]:
     df_edge = df.join(src_id, on=["src_n"]).join(dst_id, on=["dst_n"])
     df_edge = df_edge.select("src", "dst", "weight").cache()
     logging.info(f"Num of indexed edges: {df_edge.count()}")
+    if directed is not True:
+        df_edge = df_edge.union(df_edge.select("dst", "src", "weight")).distinct()
     return df_edge, name_id

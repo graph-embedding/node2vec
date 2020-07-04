@@ -20,12 +20,10 @@ from pyspark.sql.types import ArrayType
 from pyspark.ml.feature import Word2Vec
 from pyspark.ml.feature import Word2VecModel
 
+from node2vec.constants import MAX_OUT_DEGREES
 from node2vec.constants import NODE2VEC_PARAMS
 from node2vec.constants import WORD2VEC_PARAMS
-
-
-# num of partitions for map partitions
-NUM_PARTITIONS: int = 3000
+from node2vec.constants import NUM_PARTITIONS
 
 
 #
@@ -191,6 +189,46 @@ def extend_random_walk(
 #
 # ============================- transformer func ====================================
 #
+def trim_hotspot_vertices(
+    max_out_degree: int = 0, random_seed: Optional[int] = None,
+) -> Callable:
+    """
+    This func is to do random sampling on the edges of vertices which have very large
+    number of out edges. A maximal threshold is provided and random sampling is applied.
+    By default the threshold is 100,000.
+
+    :param max_out_degree: the max out degree of each vertex to avoid hotspot
+    :param random_seed: the seed for random sampling, testing only
+    """
+    if max_out_degree <= 0:
+        max_out_degree = MAX_OUT_DEGREES
+    if random_seed is not None:
+        random.seed(random_seed)
+
+    def _hotspot_vertices_trimming(partition: List[Row]) -> List[Row]:
+        """
+        :param partition: a partition in List[Row] of ["src", "dst", "weight"]
+        return a List[Row] of shared neighbors of every pair of src and dst
+        """
+        src_nbs: Dict[int, List[Tuple[int, float]]] = {}
+        for arow in partition:
+            row = arow.asDict()
+            src = row["src"]
+            if src not in src_nbs:
+                src_nbs[src] = []
+            src_nbs[src].append((row["dst"], row["weight"]))
+
+        result: List[Row] = []
+        for src, nbs in src_nbs.items():
+            if len(nbs) > max_out_degree:
+                nbs = random.sample(nbs, max_out_degree)
+            for dst, weight in nbs:
+                result += [Row(src=src, dst=dst, weight=weight)]
+        return result
+
+    return _hotspot_vertices_trimming
+
+
 def get_vertex_neighbors(partition: List[Row]) -> List[Row]:
     """
     Aggregate all neighbors and their weights for every vertex in the graph
@@ -351,6 +389,7 @@ class Node2VecSpark:
         spark: SparkSession,
         n2v_params: Dict[str, Any],
         w2v_params: Dict[str, Any],
+        max_out_degree: int = 0,
         window_size: Optional[int] = None,
         vector_size: Optional[int] = None,
         random_seed: Optional[int] = None,
@@ -362,6 +401,7 @@ class Node2VecSpark:
         :param spark: an active Spark session
         :param n2v_params: dict of the node2vec params for num_walks, walk_length,
                            return_param, and inout_param, with default values
+        :param max_out_degree: int, the max num of edges allowed for each vertex
         :param window_size: the context size for word2vec embedding
         :param vector_size: int, dimension of the output graph embedding representation
                             num of codes after transforming from words (dimension
@@ -376,6 +416,7 @@ class Node2VecSpark:
         self.df: Optional[DataFrame] = None
         self.name_id: Optional[DataFrame] = None
         self.model: Optional[Word2VecModel] = None
+        self.max_out_degree = max_out_degree
 
         # update n2v_params
         for param in NODE2VEC_PARAMS:
@@ -424,6 +465,13 @@ class Node2VecSpark:
         if directed is False:
             df_rev = df_graph.select("dst", "src", "weight")
             df_graph = df_graph.union(df_rev)
+
+        df = df_graph.repartition(NUM_PARTITIONS, ["src"])
+        param = {"max_out_degree": self.max_out_degree, "random_seed": self.random_seed}
+        df_graph = self.spark.createDataFrame(
+            df.rdd.mapPartitions(trim_hotspot_vertices, params=param)
+        ).cache()
+        logging.info(f"Num of edges after trimming = {df_graph.count()}")
 
         if indexed is True:
             self.df = (

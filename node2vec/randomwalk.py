@@ -11,6 +11,7 @@ from typing import Any
 from typing import Optional
 
 from node2vec.constants import MAX_OUT_DEGREES
+from node2vec.constants import NUM_PARTITIONS
 
 
 class Neighbors(object):
@@ -66,22 +67,36 @@ class AliasProb(object):
     def serialize(self):
         return base64.b64encode(pickle.dumps(self._data)).decode()
 
-    def draw_alias(self, nbs: Neighbors, seed: Optional[int] = None,) -> int:
+    def sampling_from_alias_wiki(self, first_random: float) -> int:
         """
-        Draw sample from a non-uniform discrete distribution using alias sampling.
-        Keep aligned with the original author's implementation to help parity tests.
+        Draw sample from a non-uniform discrete distribution using Alias sampling.
+        This implementation is aligned with the wiki description using 1 random number.
 
-        :param nbs: a Neighbors object
-        :param seed: a int as the random sampling seed, for testing only.
-        Return the picked index in the neighbor list as next node of the random path.
+        :param first_random: a random floating point number in the range [0.0, 1.0)
+        Return the picked index in the neighbor list as next node in the random path.
         """
-        if seed is not None:
-            random.seed(seed)
-        pick = int(random.random() * len(self.alias))
-        if random.random() < self.probs[pick]:
-            return nbs.dst_id[pick]
+        n = len(self.alias)
+        pick = int(n * first_random)
+        y = n * first_random - pick
+        if y < self.probs[pick]:
+            return pick
         else:
-            return nbs.dst_id[self.alias[pick]]
+            return self.alias[pick]
+
+    def sampling_from_alias(self, first_random: float, second_random: float) -> int:
+        """
+        This is aligned with the original node2vec implementation w/ 2 random numbers.
+
+        :param first_random: 1st random floating point number in the range [0.0, 1.0)
+        :param second_random: 2nd random floating point number in the range [0.0, 1.0)
+
+        Return the picked index in the neighbor list as next vertex in the random path.
+        """
+        pick = int(first_random * len(self.alias))
+        if second_random < self.probs[pick]:
+            return pick
+        else:
+            return self.alias[pick]
 
 
 class RandomPath(object):
@@ -107,19 +122,27 @@ class RandomPath(object):
 
     def append(
         self,
-        dst_neighbors: Neighbors,
+        dst_neighbors: List[int],
         alias_prob: AliasProb,
-        seed: Optional[int] = None,
+        first_random: float,
+        second_random: Optional[float] = None,
     ):
         """
         Extend the random walk path by making a biased random sampling at next step
 
         :param dst_neighbors: the neighbor node id's of the dst node
         :param alias_prob:
-        :param seed: optional random seed, for testing only
+        :param first_random: 1st random floating point number in the range [0.0, 1.0)
+        :param second_random: 2nd random floating point number in the range [0.0, 1.0),
+                              controlling which sampling method to be used.
         Return the extended path with one more node in the random walk path.
         """
-        next_vertex = alias_prob.draw_alias(dst_neighbors, seed)
+        if second_random is not None:
+            next_index = alias_prob.sampling_from_alias(first_random, second_random)
+        else:
+            next_index = alias_prob.sampling_from_alias_wiki(first_random)
+        next_vertex = dst_neighbors[next_index]
+
         path = list(self._data)
         # first step
         if len(path) == 2 and path[0] < 0:
@@ -295,7 +318,7 @@ def next_step_random_walk(
     df: Iterable[Dict[str, Any]],
     return_param: float,
     inout_param: float,
-    seed: Optional[int] = None,
+    random_seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
     Extend the random walk path by one more step
@@ -303,8 +326,11 @@ def next_step_random_walk(
     :param df: the partition of the vertex (random path) dataframe
     :param return_param:
     :param inout_param:
-    :param seed: optional random seed, for testing only
+    :param random_seed: optional random seed, for testing only
     """
+    index = random.randint(0, NUM_PARTITIONS)
+    if random_seed is not None:
+        random.seed(random_seed + index * 100)
     for row in df:
         src = row["src"]
         dst_nbs = Neighbors(row["dst_neighbors"])
@@ -318,8 +344,12 @@ def next_step_random_walk(
                     src, shared_nb_ids, dst_nbs_data, return_param, inout_param,
                 )
             )
-        path = RandomPath(row["path"])
-        _p = path.append(dst_nbs, alias_prob, seed)
+        _p = RandomPath(row["path"]).append(
+            dst_nbs.dst_id,
+            alias_prob,
+            first_random=random.random(),
+            second_random=random.random(),
+        )
         yield dict(src=_p.last_edge[0], dst=_p.last_edge[1], path=_p.path)
 
 

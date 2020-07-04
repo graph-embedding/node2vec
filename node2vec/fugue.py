@@ -25,8 +25,9 @@ from node2vec.randomwalk import to_path
 def trim_index(
     compute_engine: FugueExecutionEngine,
     df_graph: FugueDataFrame,
-    indexed: Optional[bool] = False,
-    max_out_deg: Optional[int] = 0,
+    indexed: bool = False,
+    directed: bool = True,
+    max_out_deg: int = 0,
     random_seed: Optional[int] = None,
 ) -> Tuple[FugueDataFrame, Optional[FugueDataFrame]]:
     """
@@ -42,6 +43,7 @@ def trim_index(
     :param compute_engine: an execution engine supported by Fugue
     :param df_graph: the input graph data as general Fugue dataframe
     :param indexed: if the input graph is using sequential integers to note vertices
+    :param directed: if the graph is directed or not
     :param max_out_deg: the threshold for trimming hotspot vertices, set it to <= 0
                         to turn off trimming
     :param random_seed: optional random seed, for testing only
@@ -53,22 +55,23 @@ def trim_index(
         raise ValueError(f"Input graph NOT in the right format: {df_graph.schema}")
 
     params = {"max_out_degree": max_out_deg, "random_seed": random_seed}
-    with FugueWorkflow(compute_engine) as dag:
-        df = (
-            dag.df(df_graph)
-            .partition(by=["src"])
-            .transform(trim_hotspot_vertices, schema="*", params=params,)
-            .compute()
-        )
-        name_id = None
-        if indexed is True:
-            return df, name_id
-        if isinstance(compute_engine, SparkExecutionEngine):
-            df_res, name_id = index_graph_spark(df.native)  # type: ignore
-            return SparkDataFrame(df_res), SparkDataFrame(name_id)
-        else:
-            df_res, name_id = index_graph_pandas(df.as_pandas())
-            return PandasDataFrame(df_res), PandasDataFrame(name_id)
+    dag = FugueWorkflow(compute_engine)
+    df = (
+        dag.df(df_graph)
+        .partition(by=["src"])
+        .transform(trim_hotspot_vertices, schema="*", params=params,)
+        .compute()
+    )
+
+    name_id = None
+    if indexed is True:
+        return df, name_id
+    if isinstance(compute_engine, SparkExecutionEngine):
+        df_res, name_id = index_graph_spark(df.native, directed)  # type: ignore
+        return SparkDataFrame(df_res), SparkDataFrame(name_id)
+    else:
+        df_res, name_id = index_graph_pandas(df.as_pandas(), directed)
+        return PandasDataFrame(df_res), PandasDataFrame(name_id)
 
 
 #
@@ -129,15 +132,16 @@ def random_walk(
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
-        "seed": random_seed,
+        "random_seed": random_seed,
     }
-    for _ in range(n2v_params["walk_length"]):
+    for i in range(n2v_params["walk_length"]):
         walks = (
             walks.inner_join(df_dst)
             .inner_join(df_edge)
             .transform(next_step_random_walk, params=param2,)
             .persist()
         )
+        logging.info(f"random_walk(): step {i}")
     # convert paths back to lists
     df_walks = walks.transform(to_path)
     logging.info("random_walk(): random walking done ...")
