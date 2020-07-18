@@ -469,7 +469,7 @@ class Node2VecSpark:
         df = df_graph.repartition(NUM_PARTITIONS, ["src"])
         param = {"max_out_degree": self.max_out_degree, "random_seed": self.random_seed}
         df_graph = self.spark.createDataFrame(
-            df.rdd.mapPartitions(trim_hotspot_vertices, params=param)
+            df.rdd.mapPartitions(trim_hotspot_vertices(**param))
         ).cache()
         logging.info(f"Num of edges after trimming = {df_graph.count()}")
 
