@@ -11,7 +11,6 @@ from typing import Any
 from typing import Optional
 
 from node2vec.constants import MAX_OUT_DEGREES
-from node2vec.constants import NUM_PARTITIONS
 
 
 class Neighbors(object):
@@ -328,9 +327,8 @@ def next_step_random_walk(
     :param inout_param:
     :param random_seed: optional random seed, for testing only
     """
-    index = random.randint(0, NUM_PARTITIONS)
     if random_seed is not None:
-        random.seed(random_seed + index * 100)
+        random.seed(random_seed)
     for row in df:
         src = row["src"]
         dst_nbs = Neighbors(row["dst_neighbors"])
