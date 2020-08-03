@@ -530,8 +530,7 @@ class Node2VecSpark:
 
         # process edges without hotspot vertices
         df = self.df.select("src", "dst").join(self.df_dst, on=["dst"])
-        df = df.repartition(NUM_PARTITIONS, ["src"]).cache()
-        logging.info(f"get_shared_neighbors(): edge cnt = {df.count()}")
+        df = df.repartition(NUM_PARTITIONS, ["src"])
         df_edge = self.spark.createDataFrame(
             df.rdd.mapPartitions(find_edge_shared_neighbors),
         )
