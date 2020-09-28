@@ -8,6 +8,7 @@ from typing import Union
 from typing import Iterable
 from typing import Dict
 from typing import Any
+from typing import Set
 from typing import Optional
 
 from node2vec.constants import MAX_OUT_DEGREES
@@ -189,7 +190,7 @@ def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[f
 
 def generate_edge_alias_tables(
     src_id: int,
-    shared_neighbor_ids: List[int],
+    src_nbs_id: Set[int],
     dst_neighbors: Tuple[List[int], List[float]],
     return_param: float = 1.0,
     inout_param: float = 1.0,
@@ -199,7 +200,7 @@ def generate_edge_alias_tables(
     here represents an edge, and the src and dst node's info.
 
     :param src_id: the source node id
-    :param shared_neighbor_ids: the intersection of src neighbor and dst neighbor id's
+    :param src_nbs_id: the intersection of src neighbor and dst neighbor id's
     :param dst_neighbors: the list of destination node's neighbor node id's and weights
     :param return_param: the parameter p defined in the paper
     :param inout_param: the parameter q defined in the paper
@@ -213,7 +214,6 @@ def generate_edge_alias_tables(
             f"Zero return ({return_param}) or inout ({inout_param}) parameter!"
         )
     # apply bias to edge weights
-    shared_nb_ids = set(shared_neighbor_ids)
     neighbors_dst: List[float] = []
     for i in range(len(dst_neighbors[0])):
         dst_neighbor_id, weight = dst_neighbors[0][i], dst_neighbors[1][i]
@@ -221,7 +221,7 @@ def generate_edge_alias_tables(
         if dst_neighbor_id == src_id:
             unnorm_prob = weight / return_param
         # go to a neighbor of src
-        elif dst_neighbor_id in shared_nb_ids:
+        elif dst_neighbor_id in src_nbs_id:
             unnorm_prob = weight
         # go to a brand new vertex
         else:
@@ -271,27 +271,6 @@ def get_vertex_neighbors(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     yield dict(id=src, neighbors=nbs.serialize())
 
 
-# schema: src:int,dst:int,shared_neighbor_ids:[int]
-def get_edge_shared_neighbors(
-    df: pd.DataFrame, num_walks: int,
-) -> Iterable[Dict[str, Any]]:
-    """
-    Get the shared neighbors of the src and dst vertex of every edge in the graph
-
-    :param df: a pandas df with cols "src", "dst", "dst_neighbors"
-    :param num_walks: the num of random walks starting from each vertex
-    """
-    src = df.loc[0, "src"]
-    for i in range(1, num_walks + 1):
-        yield dict(src=-i, dst=src, shared_neighbor_ids=[])
-
-    src_neighbors = set(df["dst"].tolist())
-    for _, row in df.iterrows():
-        dst_nbs_id = Neighbors(row["dst_neighbors"]).dst_id
-        shared_ids = [x for x in dst_nbs_id if x in src_neighbors]
-        yield dict(src=row["src"], dst=row["dst"], shared_neighbor_ids=shared_ids)
-
-
 # schema: src:int,dst:int,path:[int]
 def initiate_random_walk(
     df: Iterable[Dict[str, Any]], num_walks: int,
@@ -305,7 +284,7 @@ def initiate_random_walk(
     return a Iterable of dict, each of which is a row of the result df.
     """
     for arow in df:
-        src = arow["dst"]
+        src = arow["id"]
         row = {"dst": src}
         for i in range(1, num_walks + 1):
             row.update({"src": -i, "path": [-i, src]})
@@ -330,16 +309,16 @@ def next_step_random_walk(
     if random_seed is not None:
         random.seed(random_seed)
     for row in df:
-        src = row["src"]
+        src, src_nbs = row["src"], row["src_neighbors"]
+        src_nbs_id = set() if src_nbs is None else set(Neighbors(src_nbs).dst_id)
         dst_nbs = Neighbors(row["dst_neighbors"])
         if src < 0:
             alias_prob = AliasProb(generate_alias_tables(dst_nbs.dst_wt))
         else:
             dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
-            shared_nb_ids = row["shared_neighbor_ids"]
             alias_prob = AliasProb(
                 generate_edge_alias_tables(
-                    src, shared_nb_ids, dst_nbs_data, return_param, inout_param,
+                    src, src_nbs_id, dst_nbs_data, return_param, inout_param,
                 )
             )
         _p = RandomPath(row["path"]).append(

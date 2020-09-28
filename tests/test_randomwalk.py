@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 import pandas as pd
 from typing import List
+from typing import Set
 from typing import Tuple
 
 from node2vec.randomwalk import Neighbors
@@ -154,14 +155,14 @@ def test_generate_alias_tables(
 @pytest.mark.parametrize(
     "src_id,shd_ids,dst_nbs,param_p,param_q,result",
     [
-        (0, [2], ([0, 2], [0.5, 0.2]), 1.0, 1.0, ([0, 0], [1.0, 0.5714285714285715])),
-        (1, ([]), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
-        (3, ([]), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
+        (0, {2}, ([0, 2], [0.5, 0.2]), 1.0, 1.0, ([0, 0], [1.0, 0.5714285714285715])),
+        (1, set(), ([1], [0.2]), 0.8, 1.5, ([0], [1.0])),
+        (3, set(), ([1, 3], [0.5, 1.0]), 2.0, 4.0, ([1, 0], [0.4, 1.0])),
     ],
 )
 def test_generate_edge_alias_tables(
         src_id: int,
-        shd_ids: List[int],
+        shd_ids: Set[int],
         dst_nbs: Tuple[List[int], List[float]],
         param_p: float,
         param_q: float,
@@ -241,39 +242,6 @@ def test_get_vertex_neighbors():
     assert res['neighbors'] == code64
 
 
-#
-def test_get_edge_shared_neighbors():
-    """
-    test calculate_edge_attributes()
-    """
-    from node2vec.randomwalk import get_edge_shared_neighbors
-
-    random.seed(20)
-    src, dst = [0, 0, 0], [1, 2, 3]
-    dst_nbs = [Neighbors(([0, 2, 4], [0.5, 0.7, 1.0])),
-               Neighbors(([0, 1, 3], [1.2, 0.7, 1.5])),
-               Neighbors(([0, 2], [0.9, 1.5])),
-               ]
-    df = pd.DataFrame.from_dict(
-        {'src': src, 'dst': dst, 'dst_neighbors': [nb.serialize() for nb in dst_nbs]}
-    )
-
-    num_walks = 2
-    res = iter(get_edge_shared_neighbors(df, num_walks))
-    for i in range(1, num_walks + 1):
-        ans = next(res)
-        assert sorted(ans.keys()) == ['dst', 'shared_neighbor_ids', 'src']
-        assert ans['src'] == -i and ans['dst'] == 0
-        assert ans['shared_neighbor_ids'] == []
-
-    for i in range(len(df)):
-        ans = next(res)
-        shd_ids = [x for x in dst_nbs[i].dst_id if x in dst]
-        assert sorted(ans.keys()) == ['dst', 'shared_neighbor_ids', 'src']
-        assert ans['src'] == 0 and ans['dst'] == dst[i]
-        assert ans['shared_neighbor_ids'] == shd_ids
-
-
 def test_initiate_random_walk():
     """
     test initiate_random_walk()
@@ -283,7 +251,7 @@ def test_initiate_random_walk():
     random.seed(20)
     src, nbs, ap = [3, 2], [[0, 1, 2], [3, 1]], [u'abc', u'bcd']
     # df = pd.DataFrame.from_dict({'id': src, 'neighbors': nbs, 'alias_prob': ap})
-    df = [{"dst": src[i], "neighbors": nbs[i]} for i in range(len(src))]
+    df = [{"id": src[i], "neighbors": nbs[i]} for i in range(len(src))]
 
     num_walks = 3
     res = iter(initiate_random_walk(df, num_walks))

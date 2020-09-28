@@ -107,7 +107,7 @@ class Node2VecGensim(Node2VecBase):
                 w2v_params[param] = GENSIM_PARAMS[param]
         w2v_params["seed"] = random_seed if random_seed else int(time.time()) // 60
         if window_size is not None:
-            if window_size < 5 or window_size > 40:
+            if window_size < 5 or window_size > 30:
                 raise ValueError(f"Inappropriate context window size {window_size}!")
             w2v_params["window"] = window_size
         if vector_size is not None:
@@ -220,7 +220,7 @@ class Node2VecSpark(Node2VecBase):
                 w2v_params[param] = WORD2VEC_PARAMS[param]
         w2v_params["seed"] = random_seed if random_seed else int(time.time())
         if window_size is not None:
-            if window_size < 5 or window_size > 40:
+            if window_size < 5 or window_size > 30:
                 raise ValueError(f"Inappropriate context window size {window_size}!")
             w2v_params["windowSize"] = window_size
         if vector_size is not None:

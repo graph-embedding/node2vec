@@ -15,7 +15,6 @@ from node2vec.indexer import index_graph_pandas
 from node2vec.indexer import index_graph_spark
 from node2vec.randomwalk import trim_hotspot_vertices
 from node2vec.randomwalk import get_vertex_neighbors
-from node2vec.randomwalk import get_edge_shared_neighbors
 from node2vec.randomwalk import initiate_random_walk
 from node2vec.randomwalk import next_step_random_walk
 from node2vec.randomwalk import to_path
@@ -79,6 +78,8 @@ def random_walk(
     compute_engine: FugueExecutionEngine,
     df_graph: FugueDataFrame,
     n2v_params: Dict[str, Any],
+    walk_seed: Optional[FugueDataFrame] = None,
+    checkpoint_dir: Optional[str] = None,
     random_seed: Optional[int] = None,
 ) -> FugueDataFrame:
     """
@@ -95,8 +96,11 @@ def random_walk(
     computing and memory intensive.
 
     :param compute_engine: an execution engine supported by Fugue
-    :param df_graph: the input graph data as general Fugue dataframe
+    :param df_graph: the input graph data as general Fugue dataframe, indexed
     :param n2v_params: the node2vec params
+    :param walk_seed: single-column df to refine random walk on selected users, indexed
+    :param checkpoint_dir: a bucket in s3 or gcs, must starts with "s3://" or "gs://",
+           for checkpointing dependencies in deep traversal
     :param random_seed: optional random seed, for testing only
 
     Returns a two-column DataFrame ["src", "walk"], where "src" is the source
@@ -113,35 +117,37 @@ def random_walk(
     for param in NODE2VEC_PARAMS:
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
+    if checkpoint_dir is None and n2v_params["walk_length"] > 10:
+        raise ValueError("Please provide a valid s3/gcs bucket for checkpointing!")
+    if walk_seed is not None and "id" not in walk_seed.schema:
+        raise ValueError(f"walk_seed has no column of 'id': {walk_seed.schema}!")
+
     # create workflow
     df = FugueWorkflow(compute_engine).df(df_graph)
     # process vertices
-    df_vertex = df.partition(by=["src"], presort="dst").transform(get_vertex_neighbors)
-    df_dst = df_vertex.rename(id="dst", neighbors="dst_neighbors").persist()
-    # process edges
-    param1 = {"num_walks": n2v_params["num_walks"]}
-    df_edge = (
-        df[["src", "dst"]]
-        .inner_join(df_dst)
-        .partition(by=["src"])
-        .transform(get_edge_shared_neighbors, params=param1,)
-        .persist()
-    )
+    df_adj = df.partition(by=["src"], presort="dst").transform(get_vertex_neighbors)
+    # refine start vertices of random walks
+    walk_start = df_adj[["id"]]
+    if walk_seed is not None:
+        walk_start = walk_start[["id"]].inner_join(walk_seed)
+
     # conduct random walk with distributed bfs
-    walks = df_dst[["dst"]].transform(initiate_random_walk, params=param1).persist()
+    param1 = {"num_walks": n2v_params["num_walks"]}
+    walks = walk_start.transform(initiate_random_walk, params=param1,).persist()
+    logging.info(f"random_walk(): init walks length = {walks.count()}")
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
         "random_seed": random_seed,
     }
+    df_src = df_adj.rename(id="src", neighbors="src_neighbors").persist()
+    df_dst = df_adj.rename(id="dst", neighbors="dst_neighbors").persist()
     for i in range(n2v_params["walk_length"]):
-        walks = (
-            walks.inner_join(df_dst)
-            .inner_join(df_edge)
-            .transform(next_step_random_walk, params=param2,)
-            .persist()
-        )
-        logging.info(f"random_walk(): step {i}")
+        next_walks = walks.left_outer_join(df_src).inner_join(df_dst).drop(["dst"])
+        walks = next_walks.transform(next_step_random_walk, params=param2,)
+        walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
+        logging.info(f"random_walk(): step {i} walks length = {walks.count()}")
+
     # convert paths back to lists
     df_walks = walks.transform(to_path)
     logging.info("random_walk(): random walking done ...")
