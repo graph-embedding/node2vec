@@ -310,7 +310,7 @@ def next_step_random_walk(
         random.seed(random_seed)
     for row in df:
         src, src_nbs = row["src"], row["src_neighbors"]
-        src_nbs_id = set() if src_nbs is None else set(list(Neighbors(src_nbs).dst_id))
+        src_nbs_id = set() if src_nbs is None else set(Neighbors(src_nbs).dst_id)
         dst_nbs = Neighbors(row["dst_neighbors"])
         if src < 0:
             alias_prob = AliasProb(generate_alias_tables(dst_nbs.dst_wt))
