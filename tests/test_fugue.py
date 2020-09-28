@@ -71,13 +71,16 @@ def test_random_walk():
     assert res is not None
     res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params)
     assert res is not None
+    df1 = df.rename({"src": "id"})[["id"]]
+    res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params, df1)
+    assert res is not None
 
-    n2v_params.update({"walk_length": 11})
-    pytest.raises(ValueError, random_walk, NativeExecutionEngine(), df, n2v_params)
     pytest.raises(
         ValueError, random_walk, NativeExecutionEngine(), df.as_pandas(),
         n2v_params, df.as_pandas(),
     )
+    n2v_params.update({"walk_length": 11})
+    pytest.raises(ValueError, random_walk, NativeExecutionEngine(), df, n2v_params)
 
     spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
     r = Row("src", "dst", "weight")
@@ -86,16 +89,11 @@ def test_random_walk():
         ValueError, random_walk, SparkExecutionEngine(spark), SparkDataFrame(df),
         n2v_params,
     )
-    pytest.raises(
-        ValueError, random_walk, SparkExecutionEngine(spark), SparkDataFrame(df),
-        n2v_params, SparkDataFrame(df),
-    )
-    df1 = df.withColumnRenamed("src", "id").select("id")
-    pytest.raises(
-        ValueError, random_walk, SparkExecutionEngine(spark), SparkDataFrame(df),
-        n2v_params, SparkDataFrame(df1),
-    )
 
     n2v_params.update({"walk_length": 3})
     res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)
     assert res is not None
+    pytest.raises(
+        ValueError, random_walk, SparkExecutionEngine(spark), SparkDataFrame(df),
+        n2v_params, SparkDataFrame(df),
+    )
