@@ -73,13 +73,10 @@ def test_random_walk():
     assert res is not None
 
     n2v_params.update({"walk_length": 11})
+    pytest.raises(ValueError, random_walk, NativeExecutionEngine(), df, n2v_params)
     pytest.raises(
-        ValueError, random_walk, NativeExecutionEngine(), PandasDataFrame(df),
-        n2v_params,
-    )
-    pytest.raises(
-        ValueError, random_walk, NativeExecutionEngine(), PandasDataFrame(df),
-        n2v_params, PandasDataFrame(df),
+        ValueError, random_walk, NativeExecutionEngine(), df.as_pandas(),
+        n2v_params, df.as_pandas(),
     )
 
     spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
