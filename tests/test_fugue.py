@@ -77,7 +77,7 @@ def test_random_walk():
 
     pytest.raises(
         ValueError, random_walk, NativeExecutionEngine(), df.as_pandas(),
-        n2v_params, df.as_pandas(),
+        n2v_params, df,
     )
     n2v_params.update({"walk_length": 11})
     pytest.raises(ValueError, random_walk, NativeExecutionEngine(), df, n2v_params)
