@@ -154,7 +154,8 @@ def random_walk(
             next_step_random_walk,
             params=param2,
         )
-        walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
+        # walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
+        walks = walks.persist()
         logging.info(f"random_walk(): step {i} ...")
 
     # convert paths back to lists

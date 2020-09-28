@@ -18,7 +18,6 @@ pip install node2vec-fugue
 * 1st open-source version
 * highly scalable to graph with hundreds of millions of vertices and billions of edges
 * Can handle highly sparse graphs and skewed graphs
-* Can make very deep traversal efficiently (30-50 steps tested)
 
 ### 0.2.13
 * Refactor and add native PySpark node2vec
