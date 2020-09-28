@@ -134,7 +134,6 @@ def random_walk(
     # conduct random walk with distributed bfs
     param1 = {"num_walks": n2v_params["num_walks"]}
     walks = walk_start.transform(initiate_random_walk, params=param1,).persist()
-    logging.info(f"random_walk(): init walks length = {walks.count()}")
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
@@ -146,7 +145,7 @@ def random_walk(
         next_walks = walks.left_outer_join(df_src).inner_join(df_dst).drop(["dst"])
         walks = next_walks.transform(next_step_random_walk, params=param2,)
         walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
-        logging.info(f"random_walk(): step {i} walks length = {walks.count()}")
+        logging.info(f"random_walk(): step {i} ...")
 
     # convert paths back to lists
     df_walks = walks.transform(to_path)

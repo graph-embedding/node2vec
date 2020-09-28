@@ -279,10 +279,10 @@ def test_next_step_random_walk():
         Neighbors(([0, 3], [1.2, 0.9])).serialize(),
         Neighbors(([0, 3], [1.2, 0.9])).serialize(),
     ]
-    shared_ids = [[2], [], []]
+    src_neighbors = [Neighbors(([2], [1.0])).serialize(), None, None]
     df = [{"src": src[i], "dst": dst[i], "path": path[i],
            "dst_neighbors": dst_neighbors[i],
-           "shared_neighbor_ids": shared_ids[i]} for i in range(len(src))]
+           "src_neighbors": src_neighbors[i]} for i in range(len(src))]
 
     res = iter(next_step_random_walk(df, 1.0, 1.0, 1000))
     ans = next(res)

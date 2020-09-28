@@ -3,11 +3,11 @@ from typing import Any
 
 
 # the default maximum out degrees of each vertex
-MAX_OUT_DEGREES: int = 500000
+MAX_OUT_DEGREES: int = 100000
 
 
 # num of partitions for map partitions
-NUM_PARTITIONS: int = 4000
+NUM_PARTITIONS: int = 3000
 
 
 # the default node2vec parameters
