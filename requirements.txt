@@ -22,7 +22,6 @@ numpy~=1.18.2
 pandas~=1.0.1
 pyarrow~=0.16.0
 networkx~=2.4
-pyspark==2.4.5
 setuptools~=46.0.0
 fugue==0.4.0
 gensim~=3.8.2

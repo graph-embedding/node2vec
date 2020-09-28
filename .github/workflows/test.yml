@@ -22,8 +22,10 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install pypandoc
-      run: pip install pypandoc
+    - name: Install spark
+      run: |
+        pip install pypandoc
+        pip install pyspark==2.4.5
     - name: Install dependencies
       run: make devenv
     - name: Test
