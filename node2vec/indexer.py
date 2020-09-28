@@ -7,7 +7,8 @@ from pyspark.sql import functions as ssf
 
 
 def index_graph_pandas(
-    df_graph: pd.DataFrame, directed: bool,
+    df_graph: pd.DataFrame,
+    directed: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex
@@ -24,7 +25,10 @@ def index_graph_pandas(
 
     name_id = (
         df_graph[["src"]]
-        .append(df_graph[["dst"]].rename(columns={"dst": "src"}), ignore_index=True,)
+        .append(
+            df_graph[["dst"]].rename(columns={"dst": "src"}),
+            ignore_index=True,
+        )
         .drop_duplicates()
         .reset_index()
     )
@@ -46,7 +50,8 @@ def index_graph_pandas(
 
 
 def index_graph_spark(
-    df_graph: DataFrame, directed: bool,
+    df_graph: DataFrame,
+    directed: bool,
 ) -> Tuple[DataFrame, DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex

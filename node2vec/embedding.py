@@ -259,7 +259,11 @@ class Node2VecSpark(Node2VecBase):
         """
         return self.model.getVectors().filter(f"word = {vertex_id}")  # type: ignore
 
-    def save_model(self, cloud_path: str, model_name: str,) -> None:
+    def save_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> None:
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
         """
@@ -267,7 +271,11 @@ class Node2VecSpark(Node2VecBase):
             model_name += ".sparkml"
         self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
-    def load_model(self, cloud_path: str, model_name: str,) -> SparkW2VModel:
+    def load_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> SparkW2VModel:
         """
         Load a previously saved Word2Vec model object to memory.
         """

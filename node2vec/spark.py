@@ -27,7 +27,9 @@ from node2vec.constants import NUM_PARTITIONS
 
 
 #
-def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[float]]:
+def generate_alias_tables(
+    node_weights: List[float],
+) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, following the original
     node2vec code.
@@ -107,7 +109,9 @@ def generate_edge_alias_tables(
 
 #
 def _sampling_from_alias_wiki(
-    alias: List[int], probs: List[float], random_val: float,
+    alias: List[int],
+    probs: List[float],
+    random_val: float,
 ) -> int:
     """
     Draw sample from a non-uniform discrete distribution using Alias sampling.
@@ -130,7 +134,10 @@ def _sampling_from_alias_wiki(
 
 #
 def _sampling_from_alias(
-    alias: List[int], probs: List[float], first_random: float, second_random: float,
+    alias: List[int],
+    probs: List[float],
+    first_random: float,
+    second_random: float,
 ) -> int:
     """
     This is aligned with the original node2vec implementation w/ 2 random numbers.
@@ -190,7 +197,8 @@ def extend_random_walk(
 # ============================- transformer func ====================================
 #
 def trim_hotspot_vertices(
-    max_out_degree: int = 0, random_seed: Optional[int] = None,
+    max_out_degree: int = 0,
+    random_seed: Optional[int] = None,
 ) -> Callable:
     """
     This func is to do random sampling on the edges of vertices which have very large
@@ -330,7 +338,9 @@ def initiate_random_walk(num_walks: int) -> Callable:
 
 # a transformer func for mapPartitionsWithIndex(index, partition)
 def next_step_random_walk(
-    return_param: float, inout_param: float, random_seed: Optional[int] = None,
+    return_param: float,
+    inout_param: float,
+    random_seed: Optional[int] = None,
 ) -> Callable:
     """
     Extend the random walk path by one more step
@@ -360,7 +370,11 @@ def next_step_random_walk(
                 dst_nbs = (dst_nbs_id, dst_nbs_wt)
                 shared_nb_ids = row["shared_neighbor_ids"]
                 alias, probs = generate_edge_alias_tables(
-                    src, shared_nb_ids, dst_nbs, return_param, inout_param,
+                    src,
+                    shared_nb_ids,
+                    dst_nbs,
+                    return_param,
+                    inout_param,
                 )
             path = extend_random_walk(
                 path=row["path"],
@@ -460,7 +474,10 @@ class Node2VecSpark:
         self.word2vec = Word2Vec(inputCol="walk", outputCol="vector", **w2v_params)
 
     def preprocess_input_graph(
-        self, df_graph: DataFrame, indexed: bool, directed: bool,
+        self,
+        df_graph: DataFrame,
+        indexed: bool,
+        directed: bool,
     ) -> None:
         """
         Preprocess the input graph dataframe so that it returns a dataframe in
@@ -643,7 +660,11 @@ class Node2VecSpark:
             vertex_name = str(vertex_name)
         return self.model.getVectors().filter(f"word = {vertex_name}")  # type: ignore
 
-    def save_model(self, cloud_path: str, model_name: str,) -> None:
+    def save_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> None:
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
         """
@@ -651,7 +672,11 @@ class Node2VecSpark:
             model_name += ".sparkml"
         self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
-    def load_model(self, cloud_path: str, model_name: str,) -> Word2VecModel:
+    def load_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> Word2VecModel:
         """
         Load a previously saved Word2Vec model object to memory.
         """

@@ -58,7 +58,11 @@ def trim_index(
     df = (
         dag.df(df_graph)
         .partition(by=["src"])
-        .transform(trim_hotspot_vertices, schema="*", params=params,)
+        .transform(
+            trim_hotspot_vertices,
+            schema="*",
+            params=params,
+        )
         .compute()
     )
 
@@ -133,7 +137,10 @@ def random_walk(
 
     # conduct random walk with distributed bfs
     param1 = {"num_walks": n2v_params["num_walks"]}
-    walks = walk_start.transform(initiate_random_walk, params=param1,).persist()
+    walks = walk_start.transform(
+        initiate_random_walk,
+        params=param1,
+    ).persist()
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
@@ -143,7 +150,10 @@ def random_walk(
     df_dst = df_adj.rename(id="dst", neighbors="dst_neighbors").persist()
     for i in range(n2v_params["walk_length"]):
         next_walks = walks.left_outer_join(df_src).inner_join(df_dst).drop(["dst"])
-        walks = next_walks.transform(next_step_random_walk, params=param2,)
+        walks = next_walks.transform(
+            next_step_random_walk,
+            params=param2,
+        )
         walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
         logging.info(f"random_walk(): step {i} ...")
 

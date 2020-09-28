@@ -154,7 +154,9 @@ class RandomPath(object):
 
 
 #
-def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[float]]:
+def generate_alias_tables(
+    node_weights: List[float],
+) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, following the original
     node2vec code.
@@ -234,7 +236,9 @@ def generate_edge_alias_tables(
 # ============================- transformer func ====================================
 #
 def trim_hotspot_vertices(
-    df: pd.DataFrame, max_out_degree: int = 0, random_seed: Optional[int] = None,
+    df: pd.DataFrame,
+    max_out_degree: int = 0,
+    random_seed: Optional[int] = None,
 ) -> Iterable[Dict[str, Any]]:
     """
     This func is to do random sampling on the edges of vertices which have very large
@@ -273,7 +277,8 @@ def get_vertex_neighbors(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
 
 # schema: src:int,dst:int,path:[int]
 def initiate_random_walk(
-    df: Iterable[Dict[str, Any]], num_walks: int,
+    df: Iterable[Dict[str, Any]],
+    num_walks: int,
 ) -> Iterable[Dict[str, Any]]:
     """
     Initiate the random walk path and replicate for num_walks times
@@ -318,7 +323,11 @@ def next_step_random_walk(
             dst_nbs_data = (dst_nbs.dst_id, dst_nbs.dst_wt)
             alias_prob = AliasProb(
                 generate_edge_alias_tables(
-                    src, src_nbs_id, dst_nbs_data, return_param, inout_param,
+                    src,
+                    src_nbs_id,
+                    dst_nbs_data,
+                    return_param,
+                    inout_param,
                 )
             )
         _p = RandomPath(row["path"]).append(
