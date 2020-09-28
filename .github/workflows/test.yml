@@ -30,5 +30,6 @@ jobs:
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
       run: |
+        pip install pypandoc
         pip install coveralls
         coveralls
