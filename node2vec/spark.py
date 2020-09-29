@@ -27,7 +27,9 @@ from node2vec.constants import NUM_PARTITIONS
 
 
 #
-def generate_alias_tables(node_weights: List[float],) -> Tuple[List[int], List[float]]:
+def generate_alias_tables(
+    node_weights: List[float],
+) -> Tuple[List[int], List[float]]:
     """
     Generate the two utility table for the Alias Method, following the original
     node2vec code.
@@ -107,7 +109,9 @@ def generate_edge_alias_tables(
 
 #
 def _sampling_from_alias_wiki(
-    alias: List[int], probs: List[float], random_val: float,
+    alias: List[int],
+    probs: List[float],
+    random_val: float,
 ) -> int:
     """
     Draw sample from a non-uniform discrete distribution using Alias sampling.
@@ -130,7 +134,10 @@ def _sampling_from_alias_wiki(
 
 #
 def _sampling_from_alias(
-    alias: List[int], probs: List[float], first_random: float, second_random: float,
+    alias: List[int],
+    probs: List[float],
+    first_random: float,
+    second_random: float,
 ) -> int:
     """
     This is aligned with the original node2vec implementation w/ 2 random numbers.
@@ -190,7 +197,8 @@ def extend_random_walk(
 # ============================- transformer func ====================================
 #
 def trim_hotspot_vertices(
-    max_out_degree: int = 0, random_seed: Optional[int] = None,
+    max_out_degree: int = 0,
+    random_seed: Optional[int] = None,
 ) -> Callable:
     """
     This func is to do random sampling on the edges of vertices which have very large
@@ -252,40 +260,56 @@ def get_vertex_neighbors(partition: List[Row]) -> List[Row]:
 
 
 #
-def get_edge_shared_neighbors(num_walks: int) -> Callable:
+def find_edge_shared_neighbors(partition: List[Row]) -> List[Row]:
     """
     Get the shared neighbors of the src and dst vertex of every edge in the graph
+
+    :param partition: a partition in List[Row] of ["src", "dst", "dst_neighbors"]
+    return a List[Row] of shared neighbors of every pair of src and dst
+    """
+    src_nbs: Dict[int, Set[int]] = {}
+    src_dst_nbs: Dict[int, Dict[int, List[int]]] = {}
+    for arow in partition:
+        row = arow.asDict()
+        src, dst = row["src"], row["dst"]
+        if src not in src_nbs:
+            src_nbs[src] = set()
+        src_nbs[src].add(dst)
+        if src not in src_dst_nbs:
+            src_dst_nbs[src] = {}
+        src_dst_nbs[src][dst] = [int(x) for x, _ in row["dst_neighbors"]]
+
+    result: List[Row] = []
+    for src, nbs_id in src_nbs.items():
+        for dst in nbs_id:
+            shared_ids = [x for x in src_dst_nbs[src][dst] if x in nbs_id]
+            result += [Row(src=src, dst=dst, shared_neighbor_ids=shared_ids)]
+    return result
+
+
+#
+def replicate_vertices(num_walks: int) -> Callable:
+    """
+    initiate the shared neighbors of each src vertex as empty list. Each src is
+    replicated by num_walks times to increase the parallelism of random walk.
 
     :param num_walks: the num of random walks starting from each vertex
     """
 
-    def _get_src_dst_shared_neighbors(partition: List[Row]) -> List[Row]:
+    def _replicate_vertices(partition: List[Row]) -> List[Row]:
         """
         :param partition: a partition in List[Row] of ["src", "dst", "dst_neighbors"]
         return a List[Row] of shared neighbors of every pair of src and dst
         """
-        src_nbs: Dict[int, Set[int]] = {}
-        src_dst_nbs: Dict[int, Dict[int, List[int]]] = {}
+        result: List[Row] = []
         for arow in partition:
             row = arow.asDict()
-            src, dst = row["src"], row["dst"]
-            if src not in src_nbs:
-                src_nbs[src] = set()
-            src_nbs[src].add(dst)
-            if src not in src_dst_nbs:
-                src_dst_nbs[src] = {}
-            src_dst_nbs[src][dst] = [int(x) for x, _ in row["dst_neighbors"]]
-
-        result: List[Row] = []
-        for src, nbs_id in src_nbs.items():
+            dst = row["dst"]
             for i in range(1, num_walks + 1):
-                result += [Row(src=-i, dst=src, shared_neighbor_ids=[])]
-            for dst in nbs_id:
-                shared_ids = [x for x in src_dst_nbs[src][dst] if x in nbs_id]
-                result += [Row(src=src, dst=dst, shared_neighbor_ids=shared_ids)]
+                result += [Row(src=-i, dst=dst, shared_neighbor_ids=[])]
         return result
 
-    return _get_src_dst_shared_neighbors
+    return _replicate_vertices
 
 
 #
@@ -314,7 +338,9 @@ def initiate_random_walk(num_walks: int) -> Callable:
 
 # a transformer func for mapPartitionsWithIndex(index, partition)
 def next_step_random_walk(
-    return_param: float, inout_param: float, random_seed: Optional[int] = None,
+    return_param: float,
+    inout_param: float,
+    random_seed: Optional[int] = None,
 ) -> Callable:
     """
     Extend the random walk path by one more step
@@ -344,7 +370,11 @@ def next_step_random_walk(
                 dst_nbs = (dst_nbs_id, dst_nbs_wt)
                 shared_nb_ids = row["shared_neighbor_ids"]
                 alias, probs = generate_edge_alias_tables(
-                    src, shared_nb_ids, dst_nbs, return_param, inout_param,
+                    src,
+                    shared_nb_ids,
+                    dst_nbs,
+                    return_param,
+                    inout_param,
                 )
             path = extend_random_walk(
                 path=row["path"],
@@ -415,6 +445,8 @@ class Node2VecSpark:
         self.random_seed = random_seed if random_seed else int(time.time())
         self.df: Optional[DataFrame] = None
         self.name_id: Optional[DataFrame] = None
+        self.df_dst: Optional[DataFrame] = None
+        self.df_edge: Optional[DataFrame] = None
         self.model: Optional[Word2VecModel] = None
         self.max_out_degree = max_out_degree
 
@@ -442,12 +474,14 @@ class Node2VecSpark:
         self.word2vec = Word2Vec(inputCol="walk", outputCol="vector", **w2v_params)
 
     def preprocess_input_graph(
-        self, df_graph: DataFrame, indexed: bool, directed: bool,
+        self,
+        df_graph: DataFrame,
+        indexed: bool,
+        directed: bool,
     ) -> None:
         """
         Preprocess the input graph dataframe so that it returns a dataframe in
         standard format ['src', 'dst', 'weight']
-
         If required, index all vertices and edges in a graph by using an int32 to
         represent a vertex
 
@@ -461,39 +495,64 @@ class Node2VecSpark:
             raise ValueError(f"Input graph NOT in the right format: {df_graph.columns}")
         if "weight" not in df_graph.columns:
             df_graph = df_graph.withColumn("weight", ssf.lit(1.0))
-        df_graph = df_graph.withColumn("weight", df_graph["weight"].cast("float"))
-        if directed is False:
-            df_rev = df_graph.select("dst", "src", "weight")
-            df_graph = df_graph.union(df_rev)
 
-        df = df_graph.repartition(NUM_PARTITIONS, ["src"])
+        # trim hotspot vertices
+        df_graph = df_graph.withColumn("weight", df_graph["weight"].cast("float"))
         param = {"max_out_degree": self.max_out_degree, "random_seed": self.random_seed}
+        df = df_graph.repartition(NUM_PARTITIONS, ["src"])
         df_graph = self.spark.createDataFrame(
             df.rdd.mapPartitions(trim_hotspot_vertices(**param))
         ).cache()
         logging.info(f"Num of edges after trimming = {df_graph.count()}")
 
+        # handle graph attributes
+        if directed is False:
+            df_rev = df_graph.select("dst", "src", "weight")
+            df_graph = df_graph.union(df_rev).distinct()
         if indexed is True:
-            self.df = (
-                df_graph.select("src", "dst", "weight")
-                .withColumn("src", df_graph["src"].cast("int"))
-                .withColumn("dst", df_graph["dst"].cast("int"))
-            )
+            df = df_graph.select("src", "dst", "weight")
+            df = df.withColumn("src", df["src"].cast("int"))
+            self.df = df.withColumn("dst", df["dst"].cast("int"))
             return
+
         # index the input graph
         df = df_graph.select("src").union(df_graph.select("dst")).distinct().sort("src")
-        name_id = (
-            df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1]))).toDF()
-        ).cache()
-        self.name_id = name_id
+        name_id = df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1])))
+        self.name_id = name_id.toDF().cache()
         logging.info(f"Num of indexed vertices: {self.name_id.count()}")
-
-        df = df_graph.withColumnRenamed("src", "src1").withColumnRenamed("dst", "dst1")
-        srcid = name_id.withColumnRenamed("name", "src1").withColumnRenamed("id", "src")
-        dstid = name_id.withColumnRenamed("name", "dst1").withColumnRenamed("id", "dst")
+        df = df_graph.select("src", "dst", "weight").toDF("src1", "dst1", "weight")
+        srcid = self.name_id.select("name", "id").toDF("src1", "src")
+        dstid = self.name_id.select("name", "id").toDF("dst1", "dst")
         df_edge = df.join(srcid, on=["src1"]).join(dstid, on=["dst1"])
         self.df = df_edge.select("src", "dst", "weight").cache()
         logging.info(f"Num of indexed edges: {self.df.count()}")
+
+    def get_shared_neighbors(self) -> None:
+        """
+        This is a pre-processing step to get the neighbors of each vertex, and the
+        shared neighbors of the src and dst vertex of each edge.
+
+        The func should be executed only once when random_walk() is running for
+        hyperparameter tuning.
+        """
+        if self.df is None:
+            raise ValueError("Please validate and/or index the input graph")
+        logging.info("get_shared_neighbors(): get neighbors ...")
+        # process vertices
+        df = self.df.repartition(NUM_PARTITIONS, ["src"])
+        self.df_dst = self.spark.createDataFrame(
+            df.rdd.mapPartitions(get_vertex_neighbors)
+        ).cache()
+        logging.info(f"get_shared_neighbors(): df_dst length = {self.df_dst.count()}")
+
+        # process edges without hotspot vertices
+        df = self.df.select("src", "dst").join(self.df_dst, on=["dst"])
+        df = df.repartition(NUM_PARTITIONS, ["src"])
+        df_edge = self.spark.createDataFrame(
+            df.rdd.mapPartitions(find_edge_shared_neighbors),
+        )
+        self.df_edge = df_edge.select("src", "dst", "shared_neighbor_ids").cache()
+        logging.info(f"get_shared_neighbors(): df_edge cnt = {self.df_edge.count()}")
 
     def random_walk(self) -> DataFrame:
         """
@@ -519,25 +578,17 @@ class Node2VecSpark:
         7     [7 8 1 7 4]
         ------------------
         """
-        if self.df is None:
-            raise ValueError("Please validate and/or index the input graph")
-        logging.info("random_walk(): start random walking ...")
-        # process vertices
-        df = self.df.repartition(NUM_PARTITIONS, ["src"])
-        df_dst = self.spark.createDataFrame(
-            df.rdd.mapPartitions(get_vertex_neighbors)
-        ).cache()
-        logging.info(f"random_walk(): df_dst length = {df_dst.count()}")
-
-        # process edges
+        if self.df_dst is None or self.df_edge is None:
+            raise ValueError("Please find the shared neighbors of edges")
         num_walks = self.n2v_params["num_walks"]
-        df = (
-            self.df.select("src", "dst")
-            .join(df_dst, on=["dst"])
-            .repartition(NUM_PARTITIONS, ["src"])
-        )
-        df_edge = self.spark.createDataFrame(
-            df.rdd.mapPartitions(get_edge_shared_neighbors(num_walks)),
+        param_p = self.n2v_params["return_param"]
+        param_q = self.n2v_params["inout_param"]
+        df_dst = self.df_dst
+
+        # get all shared neighbors
+        logging.info("random_walk(): start random walking ...")
+        df = self.spark.createDataFrame(
+            df_dst.select("dst").rdd.mapPartitions(replicate_vertices(num_walks)),
             schema=StructType(
                 [
                     StructField("src", IntegerType(), False),
@@ -546,6 +597,7 @@ class Node2VecSpark:
                 ]
             ),
         ).cache()
+        df_edge = self.df_edge.union(df.select("src", "dst", "shared_neighbor_ids"))
         logging.info(f"random_walk(): df_edge length = {df_edge.count()}")
 
         # conduct random walk with distributed bfs
@@ -553,17 +605,13 @@ class Node2VecSpark:
             df_dst.select("dst").rdd.mapPartitions(initiate_random_walk(num_walks))
         ).cache()
         logging.info(f"random_walk(): init walks length = {walks.count()}")
-        param_p = self.n2v_params["return_param"]
-        param_q = self.n2v_params["inout_param"]
         for i in range(self.n2v_params["walk_length"]):
             next_walks = walks.join(df_dst, on=["dst"]).join(df_edge, on=["src", "dst"])
             walks_rdd = next_walks.rdd.mapPartitionsWithIndex(
                 next_step_random_walk(param_p, param_q, self.random_seed)
             )
             next_walks = self.spark.createDataFrame(walks_rdd).cache()
-            logging.info(
-                f"random_walk(): round {i} walks length = {next_walks.count()}"
-            )
+            logging.info(f"random_walk(): step {i} walks length = {next_walks.count()}")
             walks.rdd.unpersist()
             walks = next_walks
 
@@ -612,7 +660,11 @@ class Node2VecSpark:
             vertex_name = str(vertex_name)
         return self.model.getVectors().filter(f"word = {vertex_name}")  # type: ignore
 
-    def save_model(self, cloud_path: str, model_name: str,) -> None:
+    def save_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> None:
         """
         Saves the word2vec model object to a cloud bucket, always overwrite.
         """
@@ -620,7 +672,11 @@ class Node2VecSpark:
             model_name += ".sparkml"
         self.model.save(cloud_path + "/" + model_name)  # type: ignore
 
-    def load_model(self, cloud_path: str, model_name: str,) -> Word2VecModel:
+    def load_model(
+        self,
+        cloud_path: str,
+        model_name: str,
+    ) -> Word2VecModel:
         """
         Load a previously saved Word2Vec model object to memory.
         """

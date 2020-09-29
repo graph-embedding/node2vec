@@ -7,7 +7,8 @@ from pyspark.sql import functions as ssf
 
 
 def index_graph_pandas(
-    df_graph: pd.DataFrame, directed: bool,
+    df_graph: pd.DataFrame,
+    directed: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex
@@ -24,7 +25,10 @@ def index_graph_pandas(
 
     name_id = (
         df_graph[["src"]]
-        .append(df_graph[["dst"]].rename(columns={"dst": "src"}), ignore_index=True,)
+        .append(
+            df_graph[["dst"]].rename(columns={"dst": "src"}),
+            ignore_index=True,
+        )
         .drop_duplicates()
         .reset_index()
     )
@@ -46,7 +50,8 @@ def index_graph_pandas(
 
 
 def index_graph_spark(
-    df_graph: DataFrame, directed: bool,
+    df_graph: DataFrame,
+    directed: bool,
 ) -> Tuple[DataFrame, DataFrame]:
     """
     Index all vertices and edges in a graph by using an int32 to represent a vertex
@@ -62,15 +67,14 @@ def index_graph_spark(
     df_graph = df_graph.withColumn("weight", df_graph["weight"].cast("float"))
 
     df = df_graph.select("src").union(df_graph.select("dst")).distinct().sort("src")
-    name_id = (
-        df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1]))).toDF()
-    ).cache()
+    name_id = df.rdd.zipWithIndex().map(lambda x: Row(name=x[0][0], id=int(x[1])))
+    name_id = name_id.toDF().cache()
     logging.info(f"Num of indexed vertices: {name_id.count()}")
 
-    df = df_graph.withColumnRenamed("src", "src_n").withColumnRenamed("dst", "dst_n")
-    src_id = name_id.withColumnRenamed("name", "src_n").withColumnRenamed("id", "src")
-    dst_id = name_id.withColumnRenamed("name", "dst_n").withColumnRenamed("id", "dst")
-    df_edge = df.join(src_id, on=["src_n"]).join(dst_id, on=["dst_n"])
+    df = df_graph.select("src", "dst", "weight").toDF("src1", "dst1", "weight")
+    srcid = name_id.select("name", "id").toDF("src1", "src")
+    dstid = name_id.select("name", "id").toDF("dst1", "dst")
+    df_edge = df.join(srcid, on=["src1"]).join(dstid, on=["dst1"])
     df_edge = df_edge.select("src", "dst", "weight").cache()
     logging.info(f"Num of indexed edges: {df_edge.count()}")
     if directed is not True:

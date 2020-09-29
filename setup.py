@@ -31,5 +31,5 @@ setup(
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3 :: Only",
     ],
-    install_requires=["PyYAML", "future", "pathlib2", "six", "joblib"],
+    install_requires=["PyYAML", "future", "pathlib2", "six", "joblib", "pypandoc"],
 )
