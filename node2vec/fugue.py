@@ -83,7 +83,6 @@ def random_walk(
     df_graph: FugueDataFrame,
     n2v_params: Dict[str, Any],
     walk_seed: Optional[FugueDataFrame] = None,
-    checkpoint_dir: Optional[str] = None,
     random_seed: Optional[int] = None,
 ) -> FugueDataFrame:
     """
@@ -103,8 +102,6 @@ def random_walk(
     :param df_graph: the input graph data as general Fugue dataframe, indexed
     :param n2v_params: the node2vec params
     :param walk_seed: single-column df to refine random walk on selected users, indexed
-    :param checkpoint_dir: a bucket in s3 or gcs, must starts with "s3://" or "gs://",
-           for checkpointing dependencies in deep traversal
     :param random_seed: optional random seed, for testing only
 
     Returns a two-column DataFrame ["src", "walk"], where "src" is the source
@@ -121,8 +118,6 @@ def random_walk(
     for param in NODE2VEC_PARAMS:
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
-    if checkpoint_dir is None and n2v_params["walk_length"] > 10:
-        raise ValueError("Please provide a valid s3/gcs bucket for checkpointing!")
     if walk_seed is not None and "id" not in walk_seed.schema:
         raise ValueError(f"walk_seed has no column of 'id': {walk_seed.schema}!")
 
@@ -153,9 +148,7 @@ def random_walk(
         walks = next_walks.transform(
             next_step_random_walk,
             params=param2,
-        )
-        # walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
-        walks = walks.persist()
+        ).persist()
         logging.info(f"random_walk(): step {i} ...")
 
     # convert paths back to lists

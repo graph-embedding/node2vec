@@ -74,23 +74,14 @@ def test_random_walk():
     df1 = df.rename({"src": "id"})[["id"]]
     res = random_walk(NativeExecutionEngine(), df.as_pandas(), n2v_params, df1)
     assert res is not None
-
     pytest.raises(
         ValueError, random_walk, NativeExecutionEngine(), df.as_pandas(),
         n2v_params, df,
     )
-    n2v_params.update({"walk_length": 11})
-    pytest.raises(ValueError, random_walk, NativeExecutionEngine(), df, n2v_params)
 
     spark = SparkSession.builder.config("spark.executor.cores", 4).getOrCreate()
     r = Row("src", "dst", "weight")
     df = spark.sparkContext.parallelize([r(*x) for x in graph]).toDF()
-    pytest.raises(
-        ValueError, random_walk, SparkExecutionEngine(spark), SparkDataFrame(df),
-        n2v_params,
-    )
-
-    n2v_params.update({"walk_length": 3})
     res = random_walk(SparkExecutionEngine(spark), SparkDataFrame(df), n2v_params)
     assert res is not None
     pytest.raises(
