@@ -118,8 +118,8 @@ def random_walk(
     for param in NODE2VEC_PARAMS:
         if param not in n2v_params:
             n2v_params[param] = NODE2VEC_PARAMS[param]
-    if walk_seed is not None and "id" not in walk_seed.schema:
-        raise ValueError(f"walk_seed has no column of 'id': {walk_seed.schema}!")
+    if walk_seed is not None and "id" not in walk_seed.schema.names:
+        raise ValueError(f"walk_seed has no column of 'id': {walk_seed.schema.names}!")
 
     # create workflow
     df = FugueWorkflow(compute_engine).df(df_graph)
@@ -128,14 +128,11 @@ def random_walk(
     # refine start vertices of random walks
     walk_start = df_adj[["id"]]
     if walk_seed is not None:
-        walk_start = walk_start[["id"]].inner_join(walk_seed)
+        walk_start = walk_start.inner_join(walk_seed[["id"]])
 
     # conduct random walk with distributed bfs
     param1 = {"num_walks": n2v_params["num_walks"]}
-    walks = walk_start.transform(
-        initiate_random_walk,
-        params=param1,
-    ).persist()
+    walks = walk_start.transform(initiate_random_walk, params=param1).persist()
     param2 = {
         "return_param": n2v_params["return_param"],
         "inout_param": n2v_params["inout_param"],
@@ -145,10 +142,8 @@ def random_walk(
     df_dst = df_adj.rename(id="dst", neighbors="dst_neighbors").persist()
     for i in range(n2v_params["walk_length"]):
         next_walks = walks.left_outer_join(df_src).inner_join(df_dst).drop(["dst"])
-        walks = next_walks.transform(
-            next_step_random_walk,
-            params=param2,
-        ).persist()
+        walks = next_walks.transform(next_step_random_walk, params=param2)
+        walks = walks.persist()
         logging.info(f"random_walk(): step {i} ...")
 
     # convert paths back to lists
