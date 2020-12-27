@@ -272,7 +272,7 @@ def get_vertex_neighbors(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     """
     src = df.loc[0, "src"]
     nbs = Neighbors(df)
-    yield dict(id=src, neighbors=nbs.serialize())
+    yield {"id": src, "neighbors": nbs.serialize()}
 
 
 # schema: src:int,dst:int,path:[int]
@@ -336,7 +336,7 @@ def next_step_random_walk(
             first_random=random.random(),
             second_random=random.random(),
         )
-        yield dict(src=_p.last_edge[0], dst=_p.last_edge[1], path=_p.path)
+        yield {"src": _p.last_edge[0], "dst": _p.last_edge[1], "path": _p.path}
 
 
 # schema: src:int,walk:[int]
@@ -346,4 +346,4 @@ def to_path(df: Iterable[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
     """
     for row in df:
         path = RandomPath(row["path"]).path
-        yield dict(src=path[0], walk=path)
+        yield {"src": path[0], "walk": path}
