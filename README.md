@@ -14,6 +14,12 @@ pip install node2vec-fugue
 
 
 ## Release History
+
+### 0.3.2
+* support checkpointing using fugue for deep traversal
+* add a node2vec implementation in native spark
+* add two working examples in fugue spark and native spark
+
 ### 0.3.1
 * 1st open-source version
 * highly scalable to graph with hundreds of millions of vertices and billions of edges

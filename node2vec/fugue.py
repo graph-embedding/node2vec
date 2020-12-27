@@ -84,6 +84,7 @@ def random_walk(
     n2v_params: Dict[str, Any],
     walk_seed: Optional[FugueDataFrame] = None,
     random_seed: Optional[int] = None,
+    checkpoint_dir: Optional[str] = "/tmp",
 ) -> FugueDataFrame:
     """
     A simulated random walk process. Current implementation is naive since it uses
@@ -103,6 +104,7 @@ def random_walk(
     :param n2v_params: the node2vec params
     :param walk_seed: single-column df to refine random walk on selected users, indexed
     :param random_seed: optional random seed, for testing only
+    :param checkpoint_dir: str, an s3 or gcs bucket as the checkpointing directory
 
     Returns a two-column DataFrame ["src", "walk"], where "src" is the source
         vertex id, and "walk" is a random walk path as a list of vertex id's
@@ -122,6 +124,7 @@ def random_walk(
         raise ValueError(f"walk_seed has no column of 'id': {walk_seed.schema.names}!")
 
     # create workflow
+    compute_engine.conf.setdefault("fugue.workflow.cache.path", checkpoint_dir)
     df = FugueWorkflow(compute_engine).df(df_graph)
     # process vertices
     df_adj = df.partition(by=["src"], presort="dst").transform(get_vertex_neighbors)
@@ -143,7 +146,7 @@ def random_walk(
     for i in range(n2v_params["walk_length"]):
         next_walks = walks.left_outer_join(df_src).inner_join(df_dst).drop(["dst"])
         walks = next_walks.transform(next_step_random_walk, params=param2)
-        walks = walks.persist()
+        walks = walks.persist() if i % 10 < 9 else walks.checkpoint()
         logging.info(f"random_walk(): step {i} ...")
 
     # convert paths back to lists
