@@ -27,4 +27,5 @@ fugue==0.4.7
 gensim~=3.8.2
 joblib~=0.14.1
 scikit-learn~=0.22.1
+pypandoc
 pyspark==2.4.5
