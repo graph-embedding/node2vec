@@ -1,7 +1,74 @@
+import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn import init
+
+np.random.seed(12345)
+
+
+class DataReader:
+    NEGATIVE_TABLE_SIZE = 1e8
+
+    def __init__(self, inputFileName, min_count):
+
+        self.negatives = []
+        self.discards = []
+        self.negpos = 0
+
+        self.word2id = dict()
+        self.id2word = dict()
+        self.sentences_count = 0
+        self.token_count = 0
+        self.word_frequency = dict()
+
+        self.inputFileName = inputFileName
+        self.read_words(min_count)
+        self.initTableNegatives()
+        self.initTableDiscards()
+
+    def read_words(self, min_count):
+        word_frequency = dict()
+        for line in open(self.inputFileName, encoding="utf8"):
+            line = line.split()
+            if len(line) > 1:
+                self.sentences_count += 1
+                for word in line:
+                    if len(word) > 0:
+                        self.token_count += 1
+                        word_frequency[word] = word_frequency.get(word, 0) + 1
+
+                        if self.token_count % 1000000 == 0:
+                            print("Read " + str(int(self.token_count / 1000000)) + "M words.")
+
+        wid = 0
+        for w, c in word_frequency.items():
+            if c < min_count:
+                continue
+            self.word2id[w] = wid
+            self.id2word[wid] = w
+            self.word_frequency[wid] = c
+            wid += 1
+        print("Total embeddings: " + str(len(self.word2id)))
+
+    def initTableDiscards(self):
+        t = 0.0001
+        f = np.array(list(self.word_frequency.values())) / self.token_count
+        self.discards = np.sqrt(t / f) + (t / f)
+
+    def initTableNegatives(self):
+        pow_frequency = np.array(list(self.word_frequency.values())) ** 0.5
+        words_pow = sum(pow_frequency)
+        ratio = pow_frequency / words_pow
+        count = np.round(ratio * DataReader.NEGATIVE_TABLE_SIZE)
+        for wid, c in enumerate(count):
+            self.negatives += [wid] * int(c)
+        self.negatives = np.array(self.negatives)
+        np.random.shuffle(self.negatives)
+
+    def getNegatives(self, target, size):  # TODO check equality with target
+        response = self.negatives[self.negpos:self.negpos + size]
+        self.negpos = (self.negpos + size) % len(self.negatives)
+        if len(response) != size:
+            return np.concatenate((response, self.negatives[0:self.negpos]))
+        return response
 
 
 import torch.optim as optim
@@ -61,53 +128,4 @@ class Word2VecTrainer:
                         print(" Loss: " + str(running_loss))
 
             self.skip_gram_model.save_embedding(self.data.id2word, self.output_file_name)
-
-
-if __name__ == '__main__':
-    w2v = Word2VecTrainer(input_file="input.txt", output_file="out.vec")
-    w2v.train()
-
-
-"""
-    u_embedding: Embedding for center word.
-    v_embedding: Embedding for neighbor words.
-"""
-
-
-class SkipGramModel(nn.Module):
-
-    def __init__(self, emb_size, emb_dimension):
-        super(SkipGramModel, self).__init__()
-        self.emb_size = emb_size
-        self.emb_dimension = emb_dimension
-        self.u_embeddings = nn.Embedding(emb_size, emb_dimension, sparse=True)
-        self.v_embeddings = nn.Embedding(emb_size, emb_dimension, sparse=True)
-
-        initrange = 1.0 / self.emb_dimension
-        init.uniform_(self.u_embeddings.weight.data, -initrange, initrange)
-        init.constant_(self.v_embeddings.weight.data, 0)
-
-    def forward(self, pos_u, pos_v, neg_v):
-        emb_u = self.u_embeddings(pos_u)
-        emb_v = self.v_embeddings(pos_v)
-        emb_neg_v = self.v_embeddings(neg_v)
-
-        score = torch.sum(torch.mul(emb_u, emb_v), dim=1)
-        score = torch.clamp(score, max=10, min=-10)
-        score = -F.logsigmoid(score)
-
-        neg_score = torch.bmm(emb_neg_v, emb_u.unsqueeze(2)).squeeze()
-        neg_score = torch.clamp(neg_score, max=10, min=-10)
-        neg_score = -torch.sum(F.logsigmoid(-neg_score), dim=1)
-
-        return torch.mean(score + neg_score)
-
-    def save_embedding(self, id2word, file_name):
-        embedding = self.u_embeddings.weight.cpu().data.numpy()
-        with open(file_name, 'w') as f:
-            f.write('%d %d\n' % (len(id2word), self.emb_dimension))
-            for wid, w in id2word.items():
-                e = ' '.join(map(lambda x: str(x), embedding[wid]))
-                f.write('%s %s\n' % (w, e))
-
 
