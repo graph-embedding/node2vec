@@ -38,12 +38,9 @@ class WordDataLoader:
     def read(self):
         for line in open(self.datapath, encoding="utf8"):
             line = line.split()
-            if not line:
-                continue
             for word in line:
-                if not word:
-                    continue
-                self.word_freq[word] = self.word_freq.get(word, 0) + 1
+                if word is not None:
+                    self.word_freq[word] = self.word_freq.get(word, 0) + 1
         wid = 0
         for word, count in self.word_freq.items():
             if count < self.min_count:
@@ -68,8 +65,6 @@ class WordDataLoader:
 
         for line in open(self.datapath, encoding="utf8"):
             line = line.split()
-            if not line:
-                continue
             for i, word in enumerate(line):
                 if not word:
                     continue
