@@ -432,7 +432,7 @@ class Node2VecSpark:
         :param w2v_params: dict of parameters to pass to gensim's word2vec module (not
                            to set embedding dim here)
         :param random_seed: optional random seed, for testing only
-        :param checkpoint_dir: str, an HDFS, s3 or gcs bucket as the checkpointing directory
+        :param checkpoint_dir: str, an HDFS, s3 or gcs bucket as checkpointing directory
         """
         self.spark = spark
         self.random_seed = random_seed if random_seed else int(time.time())
