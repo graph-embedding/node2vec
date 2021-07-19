@@ -594,7 +594,7 @@ class Node2VecSpark:
                 ),
                 schema=schema,
             )
-            if self.spark.sparkContext.getCheckpointDir() and i % 10 == 9:
+            if self.checkpoint_dir is not None and i % 10 == 9:
                 walks = walks.checkpoint()
             else:
                 walks = walks.cache()
