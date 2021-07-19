@@ -413,6 +413,7 @@ class Node2VecSpark:
         window_size: Optional[int] = None,
         vector_size: Optional[int] = None,
         random_seed: Optional[int] = None,
+        checkpoint_dir: Optional[str] = None,
     ) -> None:
         """
         A driver class for the distributed Node2Vec algorithm for vertex indexing,
@@ -431,6 +432,7 @@ class Node2VecSpark:
         :param w2v_params: dict of parameters to pass to gensim's word2vec module (not
                            to set embedding dim here)
         :param random_seed: optional random seed, for testing only
+        :param checkpoint_dir: str, an HDFS, s3 or gcs bucket as checkpointing directory
         """
         self.spark = spark
         self.random_seed = random_seed if random_seed else int(time.time())
@@ -440,6 +442,7 @@ class Node2VecSpark:
         self.model: Optional[Word2VecModel] = None
         self.max_out_degree = max_out_degree
         self.users = None if df_users is None else df_users.toDF("id")
+        self.checkpoint_dir = checkpoint_dir
 
         # update n2v_params
         for param in NODE2VEC_PARAMS:
@@ -556,9 +559,8 @@ class Node2VecSpark:
         """
         if self.df is None or self.name_id is None or self.df_adj is None:
             raise ValueError("Please validate and/or index the input graph")
-        self.spark.sparkContext.setCheckpointDir(
-            "gs://sq-dataproc-graphlib-prod/tmp/checkpoints",
-        )
+        if self.checkpoint_dir:
+            self.spark.sparkContext.setCheckpointDir(self.checkpoint_dir)
 
         # initiate random walk
         schema = StructType(
@@ -592,7 +594,10 @@ class Node2VecSpark:
                 ),
                 schema=schema,
             )
-            walks = walks.cache() if i % 10 < 9 else walks.checkpoint()
+            if self.checkpoint_dir is not None and i % 10 == 9:
+                walks = walks.checkpoint()
+            else:
+                walks = walks.cache()
             logging.info(f"random_walk(): step {i} walks length = {walks.count()}")
 
         # convert paths back to lists
